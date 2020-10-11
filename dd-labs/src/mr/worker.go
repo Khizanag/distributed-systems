@@ -42,10 +42,7 @@ func ihash(key string) int {
 //
 // main/mrworker.go calls this function.
 //
-func Worker(mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string) {
-
-	// fmt.Println("-- Worker")
+func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
 
 	gob.Register(Task{})
 	gob.Register(MapTask{})
@@ -55,14 +52,9 @@ func Worker(mapf func(string, string) []KeyValue,
 	for {
 		task, status := callGetTask()
 
-		// fmt.Println("task got")
-
 		if !status {
-			// fmt.Println("error during geting task")
 			log.Fatal("Error during calling GetTask from master")
 		}
-		//
-		// fmt.Println("task got")
 
 		switch task.TaskType {
 		case MAP_TASK:
@@ -82,7 +74,6 @@ func Worker(mapf func(string, string) []KeyValue,
 func callGetTask() (Task, bool) {
 	args := GetTaskArgs{}
 	reply := GetTaskReply{}
-	// fmt.Println("-- now will call Master.GetTask")
 	status := call("Master.GetTask", &args, &reply)
 
 	return reply.Task, status
@@ -114,8 +105,6 @@ func postTaskDone(task Task) bool {
 }
 
 func doMapTaskOverOneFile(task MapTask, mapf func(string, string) []KeyValue, filename string) bool {
-
-	// copied part from "mrsequential.go"
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot open %v", filename)
@@ -127,25 +116,19 @@ func doMapTaskOverOneFile(task MapTask, mapf func(string, string) []KeyValue, fi
 		return false
 	}
 	file.Close()
-	fmt.Printf("-- doMapTaskOverOneFile: MapTaskID: %d\n\n", task.MapTaskID)
-	fmt.Printf("-- -- -- filename: %s\n", filename)
 	kva := mapf(filename, string(content))
-	for k, v := range kva {
-		fmt.Printf("-- -- -- k: %v v: %s\n", k, v)
-	}
 
 	return writeKVsIntoFiles(kva, task.NumReducers, task.MapTaskID)
 }
 
 func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
-	// fmt.Println("-- writeKVsIntoFiles")
 	filesMap := make(map[int]*os.File)
 	encodersMap := make(map[int]*json.Encoder)
 
 	var encoder *json.Encoder
 
 	for reducerID := 1; reducerID <= numReducers; reducerID++ {
-		file, _ := ioutil.TempFile(".", fmt.Sprintf("mr-%d-%d", mapTaskID, reducerID)) // TODO change name
+		file, _ := ioutil.TempFile(".", fmt.Sprintf("mr-%d-%d", mapTaskID, reducerID))
 		filesMap[reducerID] = file
 	}
 
@@ -154,7 +137,7 @@ func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
 		if oldEncoder, ok := encodersMap[reducerID]; ok {
 			encoder = oldEncoder
 		} else { // encoder and file have not been initialized yet
-			file := filesMap[reducerID] // TODO change name
+			file := filesMap[reducerID]
 
 			encoder = json.NewEncoder(file)
 			filesMap[reducerID] = file
@@ -163,7 +146,6 @@ func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
 
 		err := encoder.Encode(&kv)
 		if err != nil {
-			fmt.Println("-- writeKVsIntoFiles: Error during encoding ->", err)
 			return false
 		}
 	}
@@ -172,7 +154,6 @@ func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
 		file.Close()
 		if err := os.Rename(file.Name(), fmt.Sprintf("mr-%d-%d", mapTaskID, reducerID)); err != nil {
 			fmt.Println("-- writeKVsIntoFiles: Error during os.Rename -> ", err)
-			// return false
 		}
 	}
 	return true
@@ -229,7 +210,7 @@ func doReduceTask(t Task, reducef func(string, []string) string) bool {
 
 	ofile.Close()
 	if err := os.Rename(ofile.Name(), task.OutputFilename); err == nil {
-		// removeInputFiles(task.InputFilenames)
+		removeInputFiles(task.InputFilenames)
 		postTaskDone(t)
 	}
 

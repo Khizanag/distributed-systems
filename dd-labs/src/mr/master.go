@@ -19,8 +19,8 @@ const (
 	PLEASE_TERM int = 4
 
 	NUM_SECONDS_TO_WAIT_FOR_WORKER time.Duration = 10
-	SLEEP_DURATION                 time.Duration = 2
-	TASKS_CHAN_SIZE                int           = 10000
+	SLEEP_DURATION time.Duration = 2
+	TASKS_CHAN_SIZE int = 10000
 )
 
 type Task struct {
@@ -93,7 +93,6 @@ func (m *Master) workerController(task Task) {
 	defer m.mutex.Unlock()
 	if m.isTaskDone[task.ID] == false {
 		m.tasks <- task // rescedule task
-		fmt.Printf("Task #%d resceduled\n", task.ID)
 	}
 }
 
@@ -127,21 +126,16 @@ func (m *Master) PostTaskDone(args *PostTaskDoneArgs, reply *PostTaskDoneReply) 
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	// fmt.Println("-- PostTaskDone")
-
 	if isDone, ok := m.isTaskDone[args.Task.ID]; ok && !isDone {
-		fmt.Printf("-- Post: ID:%d\n", args.Task.ID)
 		switch args.Task.TaskType {
 
 		case MAP_TASK:
 			m.numMappersLeft--
-			// fmt.Printf("-- PostTaskDone: m.numMappersLeft: %d\n", m.numMappersLeft)
 			if m.numMappersLeft == 0 {
 				m.initReduceTasks()
 			}
 		case REDUCE_TASK:
 			m.numReducersLeft--
-			// fmt.Printf("-- PostTaskDone: m.numReducersLeft: %d\n", m.numReducersLeft)
 			if m.numReducersLeft == 0 {
 				m.isDone = true
 			}
@@ -220,11 +214,8 @@ func (m *Master) getNextReduceTaskID() int {
 
 func (m *Master) initMapTasks() {
 
-	// fmt.Println("-- InitMapTasks")
-
 	for _, filename := range m.files {
 		if _, err := os.Stat(filename); err == nil {
-			// fmt.Printf("file[%d] = %s\n", i, filename)
 			task := Task{
 				ID:       m.getNextID(),
 				TaskType: MAP_TASK,
@@ -234,19 +225,15 @@ func (m *Master) initMapTasks() {
 					NumReducers:    m.numReducers,
 				},
 			}
-			// fmt.Printf("created map task: ID: %d\n", task.ID)
 			m.tasks <- task
 			m.isTaskDone[task.ID] = false
 		} else {
-			fmt.Printf("-- initMapTasks: error during opening %s\n", filename, err)
+			fmt.Printf("-- initMapTasks: error during opening %s\n", filename)
 		}
 	}
-
-	// fmt.Println("-- initMapTasks Done")
 }
 
-func (m *Master) initReduceTasks() bool {
-	fmt.Println("-- initReduceTasks")
+func (m *Master) initReduceTasks() {
 	for reducerID := 1; reducerID <= m.numReducers; reducerID++ {
 		reduceTask := ReduceTask{
 			ReduceTaskID:   m.getNextReduceTaskID(),
@@ -264,10 +251,7 @@ func (m *Master) initReduceTasks() bool {
 			TaskType:     REDUCE_TASK,
 			SpecificTask: reduceTask,
 		}
-		// fmt.Printf("created reduce task ID: %d\n", task.ID)
 		m.tasks <- task
 		m.isTaskDone[task.ID] = false
 	}
-
-	return true
 }
