@@ -1,15 +1,17 @@
 package mr
 
-import "encoding/gob"
-import "encoding/json"
-import "fmt"
-import "hash/fnv"
-import "io/ioutil"
-import "log"
-import "net/rpc"
-import "os"
-import "time"
-import "sort"
+import (
+	"encoding/gob"
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"net/rpc"
+	"os"
+	"sort"
+	"time"
+)
 
 // for sorting by key.
 type ByKey []KeyValue
@@ -41,7 +43,7 @@ func ihash(key string) int {
 // main/mrworker.go calls this function.
 //
 func Worker(mapf func(string, string) []KeyValue,
-			reducef func(string, []string) string) {
+	reducef func(string, []string) string) {
 
 	// fmt.Println("-- Worker")
 
@@ -49,11 +51,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	gob.Register(MapTask{})
 	gob.Register(ReduceTask{})
 	gob.Register(IdleTask{})
-
-	// gob.Register(GetTaskArgs{})
-	// gob.Register(GetTaskReply{})
-	// gob.Register(PostTaskDoneArgs{})
-	// gob.Register(PostTaskDoneReply{})
 
 	for {
 		task, status := callGetTask()
@@ -64,20 +61,20 @@ func Worker(mapf func(string, string) []KeyValue,
 			// fmt.Println("error during geting task")
 			log.Fatal("Error during calling GetTask from master")
 		}
-// 
+		//
 		// fmt.Println("task got")
 
 		switch task.TaskType {
-			case MAP_TASK:
-				doMapTask(task, mapf)
-			case REDUCE_TASK:
-				doReduceTask(task, reducef)
-			case IDLE_TASK:
-				doIdleTask(task.SpecificTask.(IdleTask))
-			case PLEASE_TERM:
-				break
-			default:
-				fmt.Println("-- Worker: Unknown task type")
+		case MAP_TASK:
+			doMapTask(task, mapf)
+		case REDUCE_TASK:
+			doReduceTask(task, reducef)
+		case IDLE_TASK:
+			doIdleTask(task.SpecificTask.(IdleTask))
+		case PLEASE_TERM:
+			break
+		default:
+			fmt.Println("-- Worker: Unknown task type")
 		}
 	}
 }
@@ -136,7 +133,7 @@ func doMapTaskOverOneFile(task MapTask, mapf func(string, string) []KeyValue, fi
 	for k, v := range kva {
 		fmt.Printf("-- -- -- k: %v v: %s\n", k, v)
 	}
-	
+
 	return writeKVsIntoFiles(kva, task.NumReducers, task.MapTaskID)
 }
 
@@ -147,16 +144,17 @@ func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
 
 	var encoder *json.Encoder
 
+	for reducerID := 1; reducerID <= numReducers; reducerID++ {
+		file, _ := ioutil.TempFile(".", fmt.Sprintf("mr-%d-%d", mapTaskID, reducerID)) // TODO change name
+		filesMap[reducerID] = file
+	}
+
 	for _, kv := range kva {
-		reducerID := ihash(kv.Key) % numReducers + 1
+		reducerID := ihash(kv.Key)%numReducers + 1
 		if oldEncoder, ok := encodersMap[reducerID]; ok {
 			encoder = oldEncoder
 		} else { // encoder and file have not been initialized yet
-			file, err := ioutil.TempFile(".", fmt.Sprintf("mr-%d-%d", mapTaskID, reducerID)) // TODO change name
-			if err != nil {
-				fmt.Println("-- writeKVsIntoFiles: Error during creating TempFile ->", err)
-				return false
-			}
+			file := filesMap[reducerID] // TODO change name
 
 			encoder = json.NewEncoder(file)
 			filesMap[reducerID] = file
@@ -164,7 +162,7 @@ func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
 		}
 
 		err := encoder.Encode(&kv)
-		if(err != nil) {
+		if err != nil {
 			fmt.Println("-- writeKVsIntoFiles: Error during encoding ->", err)
 			return false
 		}
@@ -182,15 +180,15 @@ func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
 
 func doReduceTask(t Task, reducef func(string, []string) string) bool {
 	task := t.SpecificTask.(ReduceTask)
-	
+
 	kva := []KeyValue{}
 
 	for _, inputFilename := range task.InputFilenames {
 		inputFile, err := os.Open(inputFilename)
-		if err != nil { 
+		if err != nil {
 			log.Fatalf("Error during doing reduce task", err)
 		}
-		
+
 		decoder := json.NewDecoder(inputFile)
 		var kv KeyValue
 		for decoder.Decode(&kv) == nil { // no error
@@ -238,7 +236,7 @@ func doReduceTask(t Task, reducef func(string, []string) string) bool {
 	return err == nil
 }
 
-func removeInputFiles(filenames []string){
+func removeInputFiles(filenames []string) {
 	for _, filename := range filenames {
 		os.Remove(filename)
 	}

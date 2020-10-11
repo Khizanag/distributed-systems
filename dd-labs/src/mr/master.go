@@ -1,40 +1,42 @@
 package mr
 
-import "fmt"
-import "log"
-import "encoding/gob"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
-import "time"
-import "sync"
+import (
+	"encoding/gob"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+	"sync"
+	"time"
+)
 
 const (
-	MAP_TASK 	int = 1
-	REDUCE_TASK	int = 2
-	IDLE_TASK	int = 3
-	PLEASE_TERM	int = 4
+	MAP_TASK    int = 1
+	REDUCE_TASK int = 2
+	IDLE_TASK   int = 3
+	PLEASE_TERM int = 4
 
 	NUM_SECONDS_TO_WAIT_FOR_WORKER time.Duration = 10
-	SLEEP_DURATION time.Duration = 2
-	TASKS_CHAN_SIZE int = 10000
+	SLEEP_DURATION                 time.Duration = 2
+	TASKS_CHAN_SIZE                int           = 10000
 )
 
 type Task struct {
-	ID int
-	TaskType int
+	ID           int
+	TaskType     int
 	SpecificTask interface{}
 }
 
 type MapTask struct {
-	MapTaskID int
+	MapTaskID      int
 	InputFilenames []string
-	NumReducers int
+	NumReducers    int
 }
 
 type ReduceTask struct {
-	ReduceTaskID int
+	ReduceTaskID   int
 	InputFilenames []string
 	OutputFilename string
 }
@@ -44,19 +46,19 @@ type IdleTask struct {
 }
 
 type Master struct {
-	nextID int
-	files []string
-	isDone bool
-	numReducers int
+	nextID           int
+	files            []string
+	isDone           bool
+	numReducers      int
 	nextReduceTaskID int
-	numReducersLeft int
-	numMappers int
-	nextMapTaskID int
-	numMappersLeft int
-	tasks chan Task
-	isTaskDone map[int]bool
-	
-	mutex sync.Mutex 
+	numReducersLeft  int
+	numMappers       int
+	nextMapTaskID    int
+	numMappersLeft   int
+	tasks            chan Task
+	isTaskDone       map[int]bool
+
+	mutex     sync.Mutex
 	waitGroup sync.WaitGroup
 }
 
@@ -67,17 +69,17 @@ func (m *Master) GetTask(args *GetTaskArgs, reply *GetTaskReply) error {
 	if len(m.tasks) == 0 { // no tasks
 		reply.Task = m.getTaskOfIdleTask()
 	} else {
-		task := <- m.tasks
+		task := <-m.tasks
 		reply.Task = task
 		go m.workerController(task)
 	}
-	
+
 	return nil
 }
 
 func (m *Master) getTaskOfIdleTask() Task {
-	return Task {
-		ID: -1,
+	return Task{
+		ID:       -1,
 		TaskType: IDLE_TASK,
 		SpecificTask: IdleTask{
 			SleepDuration: SLEEP_DURATION,
@@ -128,7 +130,7 @@ func (m *Master) PostTaskDone(args *PostTaskDoneArgs, reply *PostTaskDoneReply) 
 	// fmt.Println("-- PostTaskDone")
 
 	if isDone, ok := m.isTaskDone[args.Task.ID]; ok && !isDone {
-		fmt.Printf("-- Post: %d\n", args.Task.ID)
+		fmt.Printf("-- Post: ID:%d\n", args.Task.ID)
 		switch args.Task.TaskType {
 
 		case MAP_TASK:
@@ -181,7 +183,7 @@ func MakeMaster(files []string, nReduce int) *Master {
 	return &m
 }
 
-func registerStructsForGOB(){
+func registerStructsForGOB() {
 	gob.Register(Task{})
 	gob.Register(MapTask{})
 	gob.Register(ReduceTask{})
@@ -216,20 +218,20 @@ func (m *Master) getNextReduceTaskID() int {
 	return nextReduceTaskID
 }
 
-func (m * Master) initMapTasks() {
+func (m *Master) initMapTasks() {
 
 	// fmt.Println("-- InitMapTasks")
 
 	for _, filename := range m.files {
 		if _, err := os.Stat(filename); err == nil {
 			// fmt.Printf("file[%d] = %s\n", i, filename)
-			task := Task {
-				ID: m.getNextID(), 
+			task := Task{
+				ID:       m.getNextID(),
 				TaskType: MAP_TASK,
 				SpecificTask: MapTask{
-					MapTaskID: m.getNextMapTaskID(),
+					MapTaskID:      m.getNextMapTaskID(),
 					InputFilenames: []string{filename},
-					NumReducers: m.numReducers,
+					NumReducers:    m.numReducers,
 				},
 			}
 			// fmt.Printf("created map task: ID: %d\n", task.ID)
@@ -247,7 +249,7 @@ func (m *Master) initReduceTasks() bool {
 	fmt.Println("-- initReduceTasks")
 	for reducerID := 1; reducerID <= m.numReducers; reducerID++ {
 		reduceTask := ReduceTask{
-			ReduceTaskID: m.getNextReduceTaskID(),
+			ReduceTaskID:   m.getNextReduceTaskID(),
 			InputFilenames: []string{},
 			OutputFilename: fmt.Sprintf("mr-out-%d", reducerID),
 		}
@@ -257,9 +259,9 @@ func (m *Master) initReduceTasks() bool {
 			reduceTask.InputFilenames = append(reduceTask.InputFilenames, inputFilename)
 		}
 
-		task := Task {
-			ID: m.getNextID(),
-			TaskType: REDUCE_TASK,
+		task := Task{
+			ID:           m.getNextID(),
+			TaskType:     REDUCE_TASK,
 			SpecificTask: reduceTask,
 		}
 		// fmt.Printf("created reduce task ID: %d\n", task.ID)
