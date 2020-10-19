@@ -17,9 +17,14 @@ package raft
 //   in the same server.
 //
 
-import "sync"
-import "sync/atomic"
-import "../labrpc"
+import (
+	"math/rand"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"../labrpc"
+)
 
 // import "bytes"
 // import "../labgob"
@@ -27,9 +32,17 @@ import "../labrpc"
 type Role int
 
 const (
-    Leader Role = iota
-    Candidate
-    Follower
+	Leader Role = iota
+	Candidate
+	Follower
+)
+
+const (
+	MinWaitMSsForRequest = 250
+	MaxWaitMSsForRequest = 400
+	SleepMSsForLeader    = 120
+	SleepMSsForCandidate = 50
+	SleepMSsForFollower  = 20
 )
 
 //
@@ -58,7 +71,11 @@ type Raft struct {
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
-	role 	  int				  // role of this server: follower, candidate or leader
+
+	role                Role // role of this server: follower, candidate or leader
+	currentTerm         int
+	votedFor            int
+	electionRequestTime time.Time // time at which last heartbeat was received
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -71,7 +88,7 @@ type Raft struct {
 func (rf *Raft) GetState() (int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.term, rf.role == Leader
+	return rf.currentTerm, rf.role == Leader
 }
 
 //
@@ -89,7 +106,6 @@ func (rf *Raft) persist() {
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
 }
-
 
 //
 // restore previously persisted state.
@@ -114,23 +130,24 @@ func (rf *Raft) readPersist(data []byte) {
 }
 
 type AppendEntriesArgs struct {
-	Term int 			// leader's term
-	LeaderID int 		// so follower can redirect clients
-	PrevLogIndex int	// index of log entry immediately preceding new ones
-	PrevLogTerm int		// term of prevLogIndex entry
-	Entries[]			// log entries to store (empty for heartbeat; may send more than one for efficiency)
-	LeaderCommit int	// leader's commitIndex
+	Term         int           // leader's term
+	LeaderID     int           // so follower can redirect clients
+	PrevLogIndex int           // index of log entry immediately preceding new ones
+	PrevLogTerm  int           // term of prevLogIndex entry
+	Entries      []interface{} // log entries to store (empty for heartbeat; may send more than one for efficiency)
+	LeaderCommit int           // leader's commitIndex
 }
 
 type AppendEntriesReply struct {
-	Term int
+	Term    int
 	Success bool
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
+	// TODO
+	return true
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -144,27 +161,35 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	Term int			// candidate’s term
-	CandidateID int		// candidate requesting vote
-	LastLogIndex int	// index of candidate’s last log entry
-	LastLogTerm int		// term of candidate’s last log entry
+	Term         int // candidate's term
+	CandidateID  int // candidate requesting vote
+	LastLogIndex int // index of candidate's last log entry
+	LastLogTerm  int // term of candidate's last log entry
 }
 
 //
-// example RequestVote RPC reply structure.
+// RequestVote RPC reply structure.
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	// Your data here (2A).
-	Term int			// currentTerm, for candidate to update itself
-	voteGranted bool	// true means candidate received vote
+	Term        int  // currentTerm, for candidate to update itself
+	voteGranted bool // true means candidate received vote
 }
 
 //
-// example RequestVote RPC handler.
+// RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if args.Term < rf.currentTerm {
+		reply.Term = rf.currentTerm
+		reply.voteGranted = false
+	} /*TODO else */
+	if (rf.votedFor == -1) || (rf.votedFor == args.CandidateID) {
+		reply.voteGranted = true
+	}
 }
 
 //
@@ -201,6 +226,57 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
+func (rf *Raft) watcher() {
+	role := rf.getRole()
+	for {
+		switch role {
+		case Leader:
+			rf.broadcastHeartBeats()
+			time.Sleep(SleepMSsForLeader * time.Millisecond)
+		case Candidate:
+			time.Sleep(SleepMSsForCandidate * time.Millisecond)
+		case Follower:
+			rf.tryBecomingCandidate()
+			time.Sleep(SleepMSsForFollower * time.Millisecond)
+		}
+	}
+}
+
+func (rf *Raft) broadcastHeartBeats() {
+	for i, peer := range rf.peers {
+		print(peer)
+		print(i)
+	}
+}
+
+func (rf *Raft) getRole() Role {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.role
+}
+
+func (rf *Raft) tryBecomingCandidate() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if time.Now().After(rf.electionRequestTime) { // heartbeat should already be received
+		rf.role = Candidate
+		rf.electionRequestTime = rf.getNextHeartBeatTime()
+		rf.broadcastRequestVotes()
+	}
+}
+
+func (rf *Raft) getNextHeartBeatTime() time.Time {
+	numMilliSeconds := rand.Intn(MaxWaitMSsForRequest-MinWaitMSsForRequest) + MinWaitMSsForRequest
+	return time.Now().Add(time.Duration(numMilliSeconds) * time.Millisecond)
+}
+
+func (rf *Raft) broadcastRequestVotes() {
+	args := RequestVoteArgs{}
+	for i, _ := range rf.peers {
+		reply := RequestVoteReply{}
+		rf.sendRequestVote(i, &args, &reply)
+	}
+}
 
 //
 // the service using Raft (e.g. a k/v server) wants to start
@@ -222,7 +298,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
-
 
 	return index, term, isLeader
 }
@@ -266,11 +341,16 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.dead = 0
+
 	// Your initialization code here (2A, 2B, 2C).
+	rf.role = Follower
+	rf.currentTerm = 0
+	rf.votedFor = -1
+
+	go rf.watcher()
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
 
 	return rf
 }
