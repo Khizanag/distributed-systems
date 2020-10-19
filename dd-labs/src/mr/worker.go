@@ -136,7 +136,7 @@ func writeKVsIntoFiles(kva []KeyValue, numReducers int, mapTaskID int) bool {
 		reducerID := ihash(kv.Key)%numReducers + 1
 		if oldEncoder, ok := encodersMap[reducerID]; ok {
 			encoder = oldEncoder
-		} else { // encoder and file have not been initialized yet
+		} else { // encoder has not been initialized yet
 			file := filesMap[reducerID]
 
 			encoder = json.NewEncoder(file)
@@ -184,7 +184,7 @@ func doReduceTask(t Task, reducef func(string, []string) string) bool {
 
 	sort.Sort(ByKey(kva))
 
-	ofile, err := ioutil.TempFile(".", task.OutputFilename) // TODO err change
+	ofile, err := ioutil.TempFile(".", task.OutputFilename)
 	if err != nil {
 		fmt.Println("-- doReduceTask: Error during creating TempFile ->", err)
 		return false
