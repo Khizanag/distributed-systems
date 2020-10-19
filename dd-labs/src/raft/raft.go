@@ -24,7 +24,13 @@ import "../labrpc"
 // import "bytes"
 // import "../labgob"
 
+type Role int
 
+const (
+    Leader Role = iota
+    Candidate
+    Follower
+)
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -52,6 +58,7 @@ type Raft struct {
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
+	role 	  int				  // role of this server: follower, candidate or leader
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -62,11 +69,9 @@ type Raft struct {
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
-
-	var term int
-	var isleader bool
-	// Your code here (2A).
-	return term, isleader
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	return rf.term, rf.role == Leader
 }
 
 //
@@ -108,8 +113,30 @@ func (rf *Raft) readPersist(data []byte) {
 	// }
 }
 
+type AppendEntriesArgs struct {
+	Term int 			// leader's term
+	LeaderID int 		// so follower can redirect clients
+	PrevLogIndex int	// index of log entry immediately preceding new ones
+	PrevLogTerm int		// term of prevLogIndex entry
+	Entries[]			// log entries to store (empty for heartbeat; may send more than one for efficiency)
+	LeaderCommit int	// leader's commitIndex
+}
 
+type AppendEntriesReply struct {
+	Term int
+	Success bool
+}
 
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+}
+
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+	return ok
+}
 
 //
 // example RequestVote RPC arguments structure.
@@ -117,6 +144,10 @@ func (rf *Raft) readPersist(data []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
+	Term int			// candidate’s term
+	CandidateID int		// candidate requesting vote
+	LastLogIndex int	// index of candidate’s last log entry
+	LastLogTerm int		// term of candidate’s last log entry
 }
 
 //
@@ -125,6 +156,8 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
+	Term int			// currentTerm, for candidate to update itself
+	voteGranted bool	// true means candidate received vote
 }
 
 //
@@ -232,7 +265,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
-
+	rf.dead = 0
 	// Your initialization code here (2A, 2B, 2C).
 
 	// initialize from state persisted before a crash
