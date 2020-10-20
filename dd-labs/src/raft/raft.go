@@ -41,13 +41,14 @@ const (
 const (
 	MinWaitMSsForRequest = 200
 	MaxWaitMSsForRequest = 400
-	SleepMSsForLeader    = 50
-	SleepMSsForCandidate = 50
-	SleepMSsForFollower  = 20
+	SleepMSsForLeader    = 40
+	SleepMSsForCandidate = 100
+	SleepMSsForFollower  = 40
 
-	MaxWaitMSsForElections                = 250
-	SleepMSsForCandidateDuringElections   = 10
-	MaxWaitMSsForReceiveHeartBeatResposes = 200
+	MaxWaitMSsForElections                 = 250
+	SleepMSsForCandidateDuringElections    = 30
+	MaxWaitMSsForReceiveHeartBeatResponses = 400
+	SleepMSsForReceiveHeartBeatResponses   = 50
 )
 
 //
@@ -213,7 +214,7 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < r.currentTerm {
 		reply.Term = r.currentTerm
 		reply.VoteGranted = false
-	} else if (r.votedFor == -1) || (r.votedFor == args.CandidateID) {
+	} else if r.currentTerm < args.Term || (r.votedFor == -1) || (r.votedFor == args.CandidateID) {
 		// ((r.votedFor == -1) || (r.votedFor == args.CandidateID)) && (args.LastLogIndex >= r.getLastLog().Index()) {
 		reply.VoteGranted = true
 		r.votedFor = args.CandidateID
@@ -278,7 +279,7 @@ func (r *Raft) watcher() {
 }
 
 func (r *Raft) startElections() {
-	fmt.Printf("-- Raft #%d started Elections before\n", r.me)
+	// fmt.Printf("-- Raft #%d started Elections before\n", r.me)
 
 	r.mu.Lock()
 
@@ -288,11 +289,10 @@ func (r *Raft) startElections() {
 
 	currentTerm := r.currentTerm
 
-	var votesLock sync.Mutex
-	numAccepts := 1 // self vote
+	var numAccepts int32 = 1 // self vote
 	r.votedFor = r.me
-	numRejects := 0
-	numServers := r.getServersCount()
+	var numRejects int32 = 0
+	var numServers int32 = int32(r.getServersCount())
 
 	r.mu.Unlock()
 
@@ -312,43 +312,42 @@ func (r *Raft) startElections() {
 				LastLogTerm:  0, // TODO r.getLastLog().Term,
 			}
 			reply := RequestVoteReply{}
+
 			r.sendRequestVote(index, &args, &reply)
 
-			votesLock.Lock()
-
 			if reply.VoteGranted {
-				numAccepts++
+				atomic.AddInt32(&numAccepts, 1)
 			} else {
-				numRejects++
+				atomic.AddInt32(&numRejects, 1)
+
+				r.mu.Lock()
+
 				if reply.Term > r.currentTerm { // TODO if is not necessary?
 					r.currentTerm = reply.Term
 					r.votedFor = -1
 					r.updateElectionRequestTime() // TODO ???
 				}
+
+				r.mu.Unlock()
 			}
 
-			votesLock.Unlock() // TODO move up?
 		}(i)
 	}
 
-	fmt.Printf("--------------- Raft #%d sent all request votes\n", r.me)
+	// fmt.Printf("--------------- Raft #%d sent all request votes\n", r.me)
 
 	maxWaitTime := time.Now().Add(time.Duration(MaxWaitMSsForElections) * time.Millisecond)
 
 	for { // wait for other servers
-		votesLock.Lock()
-		_numAccepts := numAccepts
-		_numRejects := numRejects
-		votesLock.Unlock()
 
-		if _numAccepts > numServers/2 {
+		if atomic.LoadInt32(&numAccepts) > numServers/2 {
 			r.mu.Lock()
 			r.role = Leader
 			fmt.Printf("------------------------------------------------------------------ Raft #%d became a LEADER\n", r.me)
 			r.mu.Unlock()
 			// r.broadcastHeartBeats()
 			break
-		} else if _numRejects >= numServers/2 {
+		} else if atomic.LoadInt32(&numRejects) >= numServers/2 {
 			r.mu.Lock()
 			r.role = Follower
 			r.mu.Unlock()
@@ -364,19 +363,19 @@ func (r *Raft) startElections() {
 
 // requires raft's mutex locking
 func (r *Raft) broadcastHeartBeats() {
-	fmt.Printf("-- Raft #%d is trying to broadcastHeartBeats before\n", r.me)
+	// fmt.Printf("-- Raft #%d is trying to broadcastHeartBeats before\n", r.me)
 
 	r.mu.Lock()
 	currentTerm := r.currentTerm
 	r.mu.Unlock()
 
-	fmt.Printf("-- Raft #%d is trying to broadcastHeartBeats after\n", r.me)
+	// fmt.Printf("-- Raft #%d is trying to broadcastHeartBeats after\n", r.me)
 
 	var receivedHeartBeats int32 = 1
 
 	for i := range r.peers {
 
-		if i == r.me {
+		if i == r.me { // no race condition, because me is not changing
 			continue
 		}
 
@@ -407,7 +406,7 @@ func (r *Raft) broadcastHeartBeats() {
 		}(i)
 	}
 
-	maxWaitTime := time.Now().Add(time.Duration(MaxWaitMSsForReceiveHeartBeatResposes) * time.Millisecond)
+	maxWaitTime := time.Now().Add(time.Duration(MaxWaitMSsForReceiveHeartBeatResponses) * time.Millisecond)
 	numServers := r.getServersCount()
 
 	for {
@@ -416,10 +415,9 @@ func (r *Raft) broadcastHeartBeats() {
 		} else if time.Now().After(maxWaitTime) { // time is over
 			break
 		} else {
-			time.Sleep(50 * time.Millisecond) // TODO const
+			time.Sleep(SleepMSsForReceiveHeartBeatResponses * time.Millisecond) // TODO const
 		}
 	}
-
 }
 
 func (r *Raft) tryBecomingCandidate() {
