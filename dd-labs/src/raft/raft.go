@@ -18,7 +18,6 @@ package raft
 //
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -30,7 +29,8 @@ import (
 // import "bytes"
 // import "../labgob"
 
-type Role int // enum that concretes if server is Leader, Candidate or Followers
+// enum that concretes if server is Leader, Candidate or Followers
+type Role int
 
 const (
 	Leader Role = iota
@@ -39,16 +39,14 @@ const (
 )
 
 const (
-	MinWaitMSsForRequest = 300
-	MaxWaitMSsForRequest = 500
-	SleepMSsForLeader    = 120
-	SleepMSsForCandidate = 300
+	MinWaitMSsForRequest = 250
+	MaxWaitMSsForRequest = 400
+	SleepMSsForLeader    = 110 // max 10 in 1 sec
+	SleepMSsForCandidate = 200
 	SleepMSsForFollower  = 60
 
-	MaxWaitMSsForElections                 = 350
-	SleepMSsForCandidateDuringElections    = 30
-	MaxWaitMSsForReceiveHeartBeatResponses = 400
-	SleepMSsForReceiveHeartBeatResponses   = 50
+	MaxWaitMSsForElections              = 250
+	SleepMSsForCandidateDuringElections = 30
 )
 
 //
@@ -344,7 +342,7 @@ func (r *Raft) startElections() {
 		if atomic.LoadInt32(&numAccepts) > numServers/2 {
 			r.mu.Lock()
 			r.role = Leader
-			fmt.Printf("------------------------------------------------------------------ Raft #%d became a LEADER\n", r.me)
+			// fmt.Printf("------------------------------------------------------------------ Raft #%d became a LEADER\n", r.me)
 			r.mu.Unlock()
 			// r.broadcastHeartBeats()
 			break
@@ -372,8 +370,6 @@ func (r *Raft) broadcastHeartBeats() {
 
 	// fmt.Printf("-- Raft #%d is trying to broadcastHeartBeats after\n", r.me)
 
-	var receivedHeartBeats int32 = 1
-
 	for i := range r.peers {
 
 		if i == r.me { // no race condition, because me is not changing
@@ -395,7 +391,7 @@ func (r *Raft) broadcastHeartBeats() {
 			r.sendAppendEntries(index, &args, &reply)
 
 			if reply.Success {
-				atomic.AddInt32(&receivedHeartBeats, 1)
+
 			} else {
 				r.mu.Lock()
 				if reply.Term > r.currentTerm {
@@ -406,19 +402,6 @@ func (r *Raft) broadcastHeartBeats() {
 			}
 		}(i)
 	}
-
-	// maxWaitTime := time.Now().Add(time.Duration(MaxWaitMSsForReceiveHeartBeatResponses) * time.Millisecond)
-	// numServers := r.getServersCount()
-
-	// for {
-	// if atomic.LoadInt32(&receivedHeartBeats) > int32(numServers) {
-	// break
-	// } else if time.Now().After(maxWaitTime) { // time is over
-	// break
-	// } else {
-	// time.Sleep(SleepMSsForReceiveHeartBeatResponses * time.Millisecond) // TODO const
-	// }
-	// }
 }
 
 func (r *Raft) tryBecomingCandidate() {
