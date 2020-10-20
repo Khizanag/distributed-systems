@@ -39,13 +39,13 @@ const (
 )
 
 const (
-	MinWaitMSsForRequest = 200
-	MaxWaitMSsForRequest = 400
-	SleepMSsForLeader    = 40
-	SleepMSsForCandidate = 100
-	SleepMSsForFollower  = 40
+	MinWaitMSsForRequest = 300
+	MaxWaitMSsForRequest = 500
+	SleepMSsForLeader    = 120
+	SleepMSsForCandidate = 300
+	SleepMSsForFollower  = 60
 
-	MaxWaitMSsForElections                 = 250
+	MaxWaitMSsForElections                 = 350
 	SleepMSsForCandidateDuringElections    = 30
 	MaxWaitMSsForReceiveHeartBeatResponses = 400
 	SleepMSsForReceiveHeartBeatResponses   = 50
@@ -214,7 +214,8 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < r.currentTerm {
 		reply.Term = r.currentTerm
 		reply.VoteGranted = false
-	} else if r.currentTerm < args.Term || (r.votedFor == -1) || (r.votedFor == args.CandidateID) {
+	} else if (args.Term > r.currentTerm) || (args.Term == r.currentTerm && ((r.votedFor == -1) || (r.votedFor == args.CandidateID))) {
+		//if r.currentTerm < args.Term || (r.votedFor == -1) || (r.votedFor == args.CandidateID) {
 		// ((r.votedFor == -1) || (r.votedFor == args.CandidateID)) && (args.LastLogIndex >= r.getLastLog().Index()) {
 		reply.VoteGranted = true
 		r.votedFor = args.CandidateID
@@ -406,18 +407,18 @@ func (r *Raft) broadcastHeartBeats() {
 		}(i)
 	}
 
-	maxWaitTime := time.Now().Add(time.Duration(MaxWaitMSsForReceiveHeartBeatResponses) * time.Millisecond)
-	numServers := r.getServersCount()
+	// maxWaitTime := time.Now().Add(time.Duration(MaxWaitMSsForReceiveHeartBeatResponses) * time.Millisecond)
+	// numServers := r.getServersCount()
 
-	for {
-		if atomic.LoadInt32(&receivedHeartBeats) > int32(numServers) {
-			break
-		} else if time.Now().After(maxWaitTime) { // time is over
-			break
-		} else {
-			time.Sleep(SleepMSsForReceiveHeartBeatResponses * time.Millisecond) // TODO const
-		}
-	}
+	// for {
+	// if atomic.LoadInt32(&receivedHeartBeats) > int32(numServers) {
+	// break
+	// } else if time.Now().After(maxWaitTime) { // time is over
+	// break
+	// } else {
+	// time.Sleep(SleepMSsForReceiveHeartBeatResponses * time.Millisecond) // TODO const
+	// }
+	// }
 }
 
 func (r *Raft) tryBecomingCandidate() {
