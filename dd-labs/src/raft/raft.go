@@ -66,9 +66,10 @@ type ApplyMsg struct {
 	CommandIndex int
 }
 
-type LogEntry struct {
+type Log struct {
 	Index int
 	Term  int
+	Command interface{}
 }
 
 //
@@ -84,12 +85,15 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-
-	logs                []LogEntry
 	role                Role // role of this server: follower, candidate or leader
 	currentTerm         int
 	votedFor            int
 	electionRequestTime time.Time // time at which last heartbeat was received
+
+	// data for 2B
+	logs []Log
+	commitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
+	lastApplied int // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 }
 
 // return currentTerm and whether this server
@@ -143,7 +147,7 @@ type AppendEntriesArgs struct {
 	LeaderID     int        // so follower can redirect clients
 	PrevLogIndex int        // index of log entry immediately preceding new ones
 	PrevLogTerm  int        // term of prevLogIndex entry
-	Entries      []LogEntry // log entries to store (empty for heartbeat; may send more than one for efficiency)
+	Entries      []Log // log entries to store (empty for heartbeat; may send more than one for efficiency)
 	LeaderCommit int        // leader's commitIndex
 }
 
@@ -159,10 +163,11 @@ func (r *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply)
 
 	// fmt.Printf("-- AppendEntries -s> Raft #%d after\n", r.me)
 
-	if r.currentTerm > args.Term { // TODO check for logs
+	if args.Term < r.currentTerm {
 		reply.Term = r.currentTerm
 		reply.Success = false
-	} else {
+	} else if len(r.logs) <= args.PrevLogIndex { // Reply false if log doesn't contain an entry at prevLogIndex whose term matches prevLogTerm (§5.3)
+		 // TODO check for logs
 		r.role = Follower
 		if r.currentTerm < args.Term {
 			r.currentTerm = args.Term
@@ -212,7 +217,9 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < r.currentTerm {
 		reply.Term = r.currentTerm
 		reply.VoteGranted = false
-	} else if (args.Term > r.currentTerm) || (args.Term == r.currentTerm && ((r.votedFor == -1) || (r.votedFor == args.CandidateID))) {
+	} else if (args.Term > r.currentTerm)) {
+		r.votedFor = -1
+	}
 		//if r.currentTerm < args.Term || (r.votedFor == -1) || (r.votedFor == args.CandidateID) {
 		// ((r.votedFor == -1) || (r.votedFor == args.CandidateID)) && (args.LastLogIndex >= r.getLastLog().Index()) {
 		reply.VoteGranted = true
@@ -344,7 +351,7 @@ func (r *Raft) startElections() {
 			r.role = Leader
 			// fmt.Printf("------------------------------------------------------------------ Raft #%d became a LEADER\n", r.me)
 			r.mu.Unlock()
-			// r.broadcastHeartBeats()
+			r.broadcastHeartBeats()
 			break
 		} else if atomic.LoadInt32(&numRejects) >= numServers/2 {
 			r.mu.Lock()
@@ -430,13 +437,21 @@ func (r *Raft) tryBecomingCandidate() {
 // the leader.
 //
 func (r *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
-
 	// Your code here (2B).
 
-	return index, term, isLeader
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.role == Leader {
+		newLog = Log {
+			Index: r.getLastLog().Index + 1,
+			Term: r.currentTerm,
+			Command: command,
+		}
+		r.logs = append(r.logs, newLog)
+		// TODO r.persist()
+	}
+	return r.getLastLog().Index, r.getLastLog().Term, r.role == Leader
 }
 
 //
@@ -524,13 +539,13 @@ func (r *Raft) updateElectionRequestTime() {
 	r.electionRequestTime = time.Now().Add(time.Duration(numMilliSeconds) * time.Millisecond)
 }
 
-func (r *Raft) getLastLogSafe() LogEntry {
+func (r *Raft) getLastLogSafe() Log {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	return r.getLastLog()
 }
 
-func (r *Raft) getLastLog() LogEntry {
+func (r *Raft) getLastLog() Log {
 	return r.logs[len(r.logs)-1]
 }
