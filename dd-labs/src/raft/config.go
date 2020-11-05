@@ -8,17 +8,21 @@ package raft
 // test with the original before submitting.
 //
 
-import "../labrpc"
-import "log"
-import "sync"
-import "testing"
-import "runtime"
-import "math/rand"
-import crand "crypto/rand"
-import "math/big"
-import "encoding/base64"
-import "time"
-import "fmt"
+import (
+	"log"
+	"math/rand"
+	"runtime"
+	"sync"
+	"testing"
+
+	"../labrpc"
+
+	crand "crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"math/big"
+	"time"
+)
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -466,12 +470,14 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {
+				fmt.Printf("^^^^^^^^^^^ Index: %d\n", index)
 				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 			}
 		} else {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
+	fmt.Printf("FATALIIIIIIII\n")
 	cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 	return -1
 }
