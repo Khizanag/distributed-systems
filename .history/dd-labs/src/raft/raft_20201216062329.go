@@ -53,7 +53,7 @@ const (
 )
 
 const (
-	isDebugMode = false
+	isDebugMode = true
 )
 
 //
@@ -329,8 +329,6 @@ type RequestVoteArgs struct {
 	CandidateID  int // candidate requesting vote
 	LastLogIndex int // index of candidate's last log entry
 	LastLogTerm  int // term of candidate's last log entry
-
-	CommitIndex int
 }
 
 //
@@ -356,7 +354,7 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			fmt.Printf("-- RequestVote: Raft#%v voted for Raft#%v(CustomVote)\n", r.me, args.CandidateID)
 		}
 		r.acceptVoteRequest(args, reply)
-	} else if r.candidateLogIsUpToDate(args) &&
+	} else if r.candidateLogIsUpToDate(args.LastLogIndex, args.LastLogTerm) &&
 		(r.currentTerm < args.Term ||
 			(r.currentTerm == args.Term &&
 				(r.votedFor == -1 || r.votedFor == args.CandidateID))) { // TODO check for errors
@@ -394,18 +392,14 @@ func (r *Raft) rejectRequestVote(args *RequestVoteArgs, reply *RequestVoteReply)
 	reply.Term = r.currentTerm
 }
 
-func (r *Raft) candidateLogIsUpToDate(args *RequestVoteArgs) bool {
-	if r.commitIndex > args.CommitIndex {
-		return false
-	}
-
+func (r *Raft) candidateLogIsUpToDate(lastLogIndex int, lastLogTerm int) bool {
 	lastLog := r.getLastLog()
-	if lastLog.Term < args.LastLogTerm {
+	if lastLog.Term < lastLogTerm {
 		return true
-	} else if lastLog.Term > args.LastLogTerm {
+	} else if lastLog.Term > lastLogTerm {
 		return false
 	} else { // lastLog.Term == lastLogTerm
-		return lastLog.Index <= args.LastLogIndex
+		return lastLog.Index <= lastLogIndex
 	}
 }
 
@@ -453,7 +447,6 @@ func (r *Raft) sendRequestVoteHandler(index int, newTerm int, numAccepts *int32,
 		CandidateID:  r.me,
 		LastLogIndex: r.getLastLogSafe().Index,
 		LastLogTerm:  r.getLastLogSafe().Term,
-		CommitIndex:  r.commitIndex,
 	}
 	reply := RequestVoteReply{}
 
@@ -599,7 +592,7 @@ func (r *Raft) broadcastHeartBeats() {
 		go r.sendAppendEntriesHandler(i, &numReceivedBeats)
 	}
 
-	time.Sleep(50 * time.Millisecond) // wait until appendEntries are processed
+	time.Sleep(40 * time.Millisecond) // wait until appendEntries are processed
 
 	if atomic.LoadInt32(&numReceivedBeats) == 0 {
 		r.mu.Lock()
@@ -851,7 +844,4 @@ func (r *Raft) getLastLog() Log {
 	return r.logs[len(r.logs)-1]
 }
 
-// To test type this in terminal:
-//		go test -run 2A
-//		go test -run 2B
-//		go test -run 2C
+// To test type this in terminal: go test -run 2B

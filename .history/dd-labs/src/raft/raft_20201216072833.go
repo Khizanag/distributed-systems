@@ -601,13 +601,14 @@ func (r *Raft) broadcastHeartBeats() {
 
 	time.Sleep(50 * time.Millisecond) // wait until appendEntries are processed
 
-	if atomic.LoadInt32(&numReceivedBeats) == 0 {
-		r.mu.Lock()
-		r.role = Follower
-		r.mu.Unlock()
-	} else {
-		r.updateCommitIndexes(true)
-	}
+	// if atomic.LoadInt32(&numReceivedBeats) == 0 {
+	// r.mu.Lock()
+	// r.role = Follower
+	// r.mu.Unlock()
+	// } else {
+	r.updateCommitIndexes(true)
+	// }
+
 }
 
 func (r *Raft) updateCommitIndexes(mustBeSafe bool) {

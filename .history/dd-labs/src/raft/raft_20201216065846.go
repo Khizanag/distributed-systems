@@ -53,7 +53,7 @@ const (
 )
 
 const (
-	isDebugMode = false
+	isDebugMode = true
 )
 
 //
@@ -356,7 +356,7 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			fmt.Printf("-- RequestVote: Raft#%v voted for Raft#%v(CustomVote)\n", r.me, args.CandidateID)
 		}
 		r.acceptVoteRequest(args, reply)
-	} else if r.candidateLogIsUpToDate(args) &&
+	} else if r.candidateLogIsUpToDate(args.LastLogIndex, args.LastLogTerm) &&
 		(r.currentTerm < args.Term ||
 			(r.currentTerm == args.Term &&
 				(r.votedFor == -1 || r.votedFor == args.CandidateID))) { // TODO check for errors
@@ -395,10 +395,6 @@ func (r *Raft) rejectRequestVote(args *RequestVoteArgs, reply *RequestVoteReply)
 }
 
 func (r *Raft) candidateLogIsUpToDate(args *RequestVoteArgs) bool {
-	if r.commitIndex > args.CommitIndex {
-		return false
-	}
-
 	lastLog := r.getLastLog()
 	if lastLog.Term < args.LastLogTerm {
 		return true
@@ -599,7 +595,7 @@ func (r *Raft) broadcastHeartBeats() {
 		go r.sendAppendEntriesHandler(i, &numReceivedBeats)
 	}
 
-	time.Sleep(50 * time.Millisecond) // wait until appendEntries are processed
+	time.Sleep(40 * time.Millisecond) // wait until appendEntries are processed
 
 	if atomic.LoadInt32(&numReceivedBeats) == 0 {
 		r.mu.Lock()

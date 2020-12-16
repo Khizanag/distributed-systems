@@ -53,7 +53,7 @@ const (
 )
 
 const (
-	isDebugMode = false
+	isDebugMode = true
 )
 
 //
@@ -599,7 +599,7 @@ func (r *Raft) broadcastHeartBeats() {
 		go r.sendAppendEntriesHandler(i, &numReceivedBeats)
 	}
 
-	time.Sleep(50 * time.Millisecond) // wait until appendEntries are processed
+	time.Sleep(100 * time.Millisecond) // wait until appendEntries are processed
 
 	if atomic.LoadInt32(&numReceivedBeats) == 0 {
 		r.mu.Lock()
