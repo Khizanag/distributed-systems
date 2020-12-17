@@ -181,23 +181,21 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	if args.Term < r.currentTerm {
 		reply.Term = r.currentTerm
-		r.rejectRequestVote(args, reply)
-	} else {
-		r.tryIncreaseCurrentTerm(args.Term)
+		reply.VoteGranted = false
+		return
+	}
 
-		if r.shouldAcceptRequestVote(args) {
-			r.acceptVoteRequest(args, reply)
-		} else {
-			r.rejectRequestVote(args, reply)
-		}
+	r.tryUpdateCurrentTerm(args.Term)
+
+	reply.Term = r.currentTerm
+	reply.VoteGranted = false
+
+	if (r.votedFor == -1 || r.votedFor == args.CandidateID) && r.candidateLogIsUpToDate(args) {
+		r.acceptVoteRequest(args, reply)
 	}
 }
 
-func (r *Raft) shouldAcceptRequestVote(args *RequestVoteArgs) bool {
-	return r.candidateLogIsUpToDate(args) && (r.votedFor == -1 || r.votedFor == args.CandidateID)
-}
-
-func (r *Raft) tryIncreaseCurrentTerm(termToCompare int) {
+func (r *Raft) tryUpdateCurrentTerm(termToCompare int) {
 	if r.currentTerm < termToCompare {
 		r.role = Follower
 		r.currentTerm = termToCompare
@@ -215,7 +213,6 @@ func (r *Raft) acceptVoteRequest(args *RequestVoteArgs, reply *RequestVoteReply)
 
 func (r *Raft) rejectRequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.VoteGranted = false
-	reply.Term = r.currentTerm
 }
 
 func (r *Raft) candidateLogIsUpToDate(args *RequestVoteArgs) bool {
