@@ -159,19 +159,20 @@ func (raft *Raft) readPersist(data []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	Term         int // candidate's term
-	CandidateID  int // candidate requesting vote
-	LastLogIndex int // index of candidate's last log entry
-	LastLogTerm  int // term of candidate's last log entry
+	Term         int
+	CandidateID  int
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 //
-// RequestVote RPC reply structure.
+// example RequestVote RPC reply structure.
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	Term        int  // currentTerm, for candidate to update itself
-	VoteGranted bool // true means candidate received vote
+	// Your data here (2A).
+	Term        int
+	VoteGranted bool
 }
 
 //
