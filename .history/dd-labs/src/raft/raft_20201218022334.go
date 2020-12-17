@@ -574,34 +574,34 @@ func (rf *Raft) Run() {
 // for any long-running work.
 //
 func Make(peers []*labrpc.ClientEnd, me int,
-	// persister *Persister, applyCh chan ApplyMsg) *Raft {
-	// rf := &Raft{}
-	// rf.peers = peers
-	// rf.persister = persister
-	// rf.me = me
+	persister *Persister, applyCh chan ApplyMsg) *Raft {
+	rf := &Raft{}
+	rf.peers = peers
+	rf.persister = persister
+	rf.me = me
 
-	// // Your initialization code here (2A, 2B, 2C).
-	// rf.role = Follower
-	// rf.voteCount = 0
+	// Your initialization code here (2A, 2B, 2C).
+	rf.role = Follower
+	rf.voteCount = 0
 
-	// rf.currentTerm = 0
-	// rf.votedFor = -1
-	// rf.log = append(rf.log, LogEntry{Term: 0})
+	rf.currentTerm = 0
+	rf.votedFor = -1
+	rf.log = append(rf.log, LogEntry{Term: 0})
 
-	// rf.commitIndex = 0
-	// rf.lastApplied = 0
+	rf.commitIndex = 0
+	rf.lastApplied = 0
 
-	// rf.chanApply = applyCh
-	// rf.chanGrantVote = make(chan bool, 100)
-	// rf.chanWinElect = make(chan bool, 100)
-	// rf.chanHeartbeat = make(chan bool, 100)
+	rf.chanApply = applyCh
+	rf.chanGrantVote = make(chan bool, 100)
+	rf.chanWinElect = make(chan bool, 100)
+	rf.chanHeartbeat = make(chan bool, 100)
 
-	// // initialize from state persisted before a crash
-	// rf.readPersist(persister.ReadRaftState())
+	// initialize from state persisted before a crash
+	rf.readPersist(persister.ReadRaftState())
 
-	// go rf.Run()
+	go rf.Run()
 
-	// return rf
+	return rf
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	r := &Raft{}
 	r.peers = peers
@@ -619,21 +619,17 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	r.commitIndex = 0
 	r.lastApplied = 0
 
-	zerothLog := LogEntry{
+	zerothLog := Log{
 		Index:   0,
 		Term:    r.currentTerm,
 		Command: nil,
 	}
-	r.log = []LogEntry{zerothLog}
+	r.logs = []Log{zerothLog}
 
-	// r.applyCh = applyCh
-	// r.heartbeatReceivedCh = make(chan bool, channelDefaultSize)
-	// r.voteGrantedCh = make(chan bool, channelDefaultSize)
-	// r.becameLeaderCh = make(chan bool, channelDefaultSize)
-	r.chanApply = applyCh
-	r.chanGrantVote = make(chan bool, 100)
-	r.chanWinElect = make(chan bool, 100)
-	r.chanHeartbeat = make(chan bool, 100)
+	r.applyCh = applyCh
+	r.heartbeatReceivedCh = make(chan bool, channelDefaultSize)
+	r.voteGrantedCh = make(chan bool, channelDefaultSize)
+	r.becameLeaderCh = make(chan bool, channelDefaultSize)
 
 	// initialize from state persisted before a crash
 	r.readPersist(persister.ReadRaftState())

@@ -619,7 +619,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	r.commitIndex = 0
 	r.lastApplied = 0
 
-	zerothLog := LogEntry{
+	zerothLog := Log{
 		Index:   0,
 		Term:    r.currentTerm,
 		Command: nil,
@@ -630,10 +630,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// r.heartbeatReceivedCh = make(chan bool, channelDefaultSize)
 	// r.voteGrantedCh = make(chan bool, channelDefaultSize)
 	// r.becameLeaderCh = make(chan bool, channelDefaultSize)
-	r.chanApply = applyCh
-	r.chanGrantVote = make(chan bool, 100)
-	r.chanWinElect = make(chan bool, 100)
-	r.chanHeartbeat = make(chan bool, 100)
+	rf.chanApply = applyCh
+	rf.chanGrantVote = make(chan bool, 100)
+	rf.chanWinElect = make(chan bool, 100)
+	rf.chanHeartbeat = make(chan bool, 100)
 
 	// initialize from state persisted before a crash
 	r.readPersist(persister.ReadRaftState())
