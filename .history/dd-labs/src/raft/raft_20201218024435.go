@@ -200,7 +200,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		// vote for the candidate
 		rf.votedFor = args.CandidateID
 		reply.VoteGranted = true
-		rf.voteGrantedCh <- true
+		rf.chanGrantVote <- true
 	}
 }
 
@@ -385,7 +385,7 @@ func (rf *Raft) applyLog() {
 		msg.CommandIndex = i
 		msg.CommandValid = true
 		msg.Command = rf.log[i-baseIndex].Command
-		rf.applyCh <- msg
+		rf.chanApply <- msg
 	}
 	rf.lastApplied = rf.commitIndex
 }
