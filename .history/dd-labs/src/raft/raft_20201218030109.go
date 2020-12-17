@@ -179,23 +179,25 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	defer r.mu.Unlock()
 	defer r.persist()
 
-	if args.Term < r.currentTerm {
-		reply.Term = r.currentTerm
+	if args.Term < rf.currentTerm {
+		// reject request with stale term number
+		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
 		return
 	}
 
-	if args.Term > r.currentTerm {
-		r.role = Follower
-		r.currentTerm = args.Term
-		r.votedFor = -1
+	if args.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.role = Follower
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
 	}
 
-	reply.Term = r.currentTerm
+	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 
-	if (r.votedFor == -1 || r.votedFor == args.CandidateID) && r.candidateLogIsUpToDate(args) {
-		r.acceptVoteRequest(args, reply)
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateID) && rf.candidateLogIsUpToDate(args) {
+		rf.acceptVoteRequest(args, reply)
 	}
 }
 

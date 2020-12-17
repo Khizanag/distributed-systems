@@ -173,42 +173,39 @@ type RequestVoteReply struct {
 //
 // example RequestVote RPC handler.
 //
-func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	if args.Term < r.currentTerm {
-		reply.Term = r.currentTerm
+	if args.Term < rf.currentTerm {
+		// reject request with stale term number
+		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
 		return
 	}
 
-	if args.Term > r.currentTerm {
-		r.role = Follower
-		r.currentTerm = args.Term
-		r.votedFor = -1
+	if args.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.role = Follower
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
 	}
 
-	reply.Term = r.currentTerm
+	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 
-	if (r.votedFor == -1 || r.votedFor == args.CandidateID) && r.candidateLogIsUpToDate(args) {
-		r.acceptVoteRequest(args, reply)
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateID) && rf.isUpToDate(args.LastLogTerm, args.LastLogIndex) {
+		// vote for the candidate
+		rf.votedFor = args.CandidateID
+		reply.VoteGranted = true
+		rf.voteGrantedCh <- true
 	}
-}
-
-// TODO add vote didn't granted channel
-func (r *Raft) acceptVoteRequest(args *RequestVoteArgs, reply *RequestVoteReply) {
-	reply.VoteGranted = true
-	// r.currentTerm = args.Term
-	r.votedFor = args.CandidateID
-	r.voteGrantedCh <- true
 }
 
 func (r *Raft) candidateLogIsUpToDate(args *RequestVoteArgs) bool {
-	lastLog := r.getLastLogEntry(false)
+	lastLog := r.getLastLog()
 	if lastLog.Term < args.LastLogTerm {
 		return true
 	} else if lastLog.Term > args.LastLogTerm {

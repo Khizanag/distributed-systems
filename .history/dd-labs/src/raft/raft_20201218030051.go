@@ -173,29 +173,31 @@ type RequestVoteReply struct {
 //
 // example RequestVote RPC handler.
 //
-func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	if args.Term < r.currentTerm {
-		reply.Term = r.currentTerm
+	if args.Term < rf.currentTerm {
+		// reject request with stale term number
+		reply.Term = rf.currentTerm
 		reply.VoteGranted = false
 		return
 	}
 
-	if args.Term > r.currentTerm {
-		r.role = Follower
-		r.currentTerm = args.Term
-		r.votedFor = -1
+	if args.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.role = Follower
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
 	}
 
-	reply.Term = r.currentTerm
+	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 
-	if (r.votedFor == -1 || r.votedFor == args.CandidateID) && r.candidateLogIsUpToDate(args) {
-		r.acceptVoteRequest(args, reply)
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateID) && rf.candidateLogIsUpToDate(args) {
+		acceptVoteRequest(args, reply)
 	}
 }
 

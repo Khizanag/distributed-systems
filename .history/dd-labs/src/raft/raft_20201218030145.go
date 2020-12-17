@@ -191,7 +191,7 @@ func (r *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		r.votedFor = -1
 	}
 
-	reply.Term = r.currentTerm
+	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 
 	if (r.votedFor == -1 || r.votedFor == args.CandidateID) && r.candidateLogIsUpToDate(args) {
