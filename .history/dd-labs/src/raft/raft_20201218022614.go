@@ -520,6 +520,16 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	return index, term, isLeader
 }
 
+//
+// the tester calls Kill() when a Raft instance won't
+// be needed again. you are not required to do anything
+// in Kill(), but it might be convenient to (for example)
+// turn off debug output from this instance.
+//
+func (rf *Raft) Kill() {
+	// Your code here, if desired.
+}
+
 func (rf *Raft) Run() {
 	for {
 		switch rf.role {
@@ -552,13 +562,6 @@ func (rf *Raft) Run() {
 		}
 	}
 }
-
-//
-// the tester calls Kill() when a Raft instance won't
-// be needed again. you are not required to do anything
-// in Kill(), but it might be convenient to (for example)
-// turn off debug output from this instance.
-//
 
 func (r *Raft) Kill() {
 	atomic.StoreInt32(&r.dead, 1)

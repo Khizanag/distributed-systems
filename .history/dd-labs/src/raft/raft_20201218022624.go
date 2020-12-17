@@ -553,13 +553,6 @@ func (rf *Raft) Run() {
 	}
 }
 
-//
-// the tester calls Kill() when a Raft instance won't
-// be needed again. you are not required to do anything
-// in Kill(), but it might be convenient to (for example)
-// turn off debug output from this instance.
-//
-
 func (r *Raft) Kill() {
 	atomic.StoreInt32(&r.dead, 1)
 	// Your code here, if desired.
