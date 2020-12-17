@@ -315,13 +315,12 @@ func (r *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Request
 // }
 
 func (r *Raft) sendRequestVoteHandler(index int, args *RequestVoteArgs) {
-
-	reply := &RequestVoteReply{}
-	status := r.sendRequestVote(index, args, reply)
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.persist()
+
+	reply := RequestVoteReply{}
+	status := r.sendRequestVote(index, args, &reply)
 
 	if r.killed() || status == false || r.role != Candidate || r.currentTerm != args.Term {
 		return
@@ -336,6 +335,7 @@ func (r *Raft) sendRequestVoteHandler(index int, args *RequestVoteArgs) {
 		r.voteCount++
 		if r.voteCount > r.getServersCount()/2 {
 			r.role = Leader
+			r.persist() // TODO remove
 			if isDebugMode {
 				fmt.Printf("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- > Raft# %d became LEADER\n", r.me)
 			}
@@ -356,36 +356,40 @@ func (r *Raft) increaseTermAndBecameFollower(newTerm int) {
 	r.role = Follower
 }
 
-func (r *Raft) startElections() {
-	if isDebugMode {
-		fmt.Printf("-- Raft #%d started Elections\n", r.me)
-	}
+func (rf *Raft) broadcastRequestVote() {
+	rf.mu.Lock()
+	args := &RequestVoteArgs{}
+	args.Term = rf.currentTerm
+	args.CandidateID = rf.me
+	args.LastLogIndex = rf.getLastLogEntry(false).Index
+	args.LastLogTerm = rf.getLastLogEntry(false).Term
+	rf.mu.Unlock()
 
-	r.mu.Lock()
-	r.currentTerm++
-	r.votedFor = r.me
-	r.voteCount = 1
-	r.persist()
-	r.mu.Unlock()
-
-	args := r.getRequestVoteArgs()
-
-	for i := range r.peers {
-		if !r.killed() && i != r.me && r.getRole(true) == Candidate {
-			go r.sendRequestVoteHandler(i, args)
+	for server := range rf.peers {
+		if server != rf.me && rf.role == Candidate {
+			go rf.sendRequestVote(server, args, &RequestVoteReply{})
 		}
 	}
 }
 
-func (r *Raft) getRequestVoteArgs() *RequestVoteArgs {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *Raft) startElections() {
+	if isDebugMode {
+		fmt.Printf("-- Raft #%d started Elections with: currentTerm: %v		commitIndex: %v		logLen: %v\n", r.me, r.currentTerm, r.commitIndex, len(r.log))
+	}
 
-	return &RequestVoteArgs{
+	r.mu.Lock()
+	args := RequestVoteArgs{
 		Term:         r.currentTerm,
 		CandidateID:  r.me,
 		LastLogIndex: r.getLastLogEntry(false).Index,
 		LastLogTerm:  r.getLastLogEntry(false).Term,
+	}
+	r.mu.Unlock()
+
+	for i := range r.peers {
+		if !r.killed() && i != r.me && r.getRole(true) == Candidate {
+			go r.sendRequestVoteHandler(i, &args)
+		}
 	}
 }
 
@@ -665,6 +669,14 @@ func (r *Raft) Worker() { // TODO change
 			go r.broadcastHeartbeat()
 			time.Sleep(time.Millisecond * 60)
 		case Candidate:
+
+			r.mu.Lock()
+			r.currentTerm++
+			r.votedFor = r.me
+			r.voteCount = 1
+			r.persist()
+			r.mu.Unlock()
+
 			go r.startElections()
 
 			select {

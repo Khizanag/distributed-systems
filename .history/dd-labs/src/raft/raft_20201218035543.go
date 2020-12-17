@@ -361,18 +361,11 @@ func (r *Raft) startElections() {
 		fmt.Printf("-- Raft #%d started Elections\n", r.me)
 	}
 
-	r.mu.Lock()
-	r.currentTerm++
-	r.votedFor = r.me
-	r.voteCount = 1
-	r.persist()
-	r.mu.Unlock()
-
 	args := r.getRequestVoteArgs()
 
 	for i := range r.peers {
 		if !r.killed() && i != r.me && r.getRole(true) == Candidate {
-			go r.sendRequestVoteHandler(i, args)
+			go r.sendRequestVoteHandler(i, &args)
 		}
 	}
 }
@@ -665,6 +658,14 @@ func (r *Raft) Worker() { // TODO change
 			go r.broadcastHeartbeat()
 			time.Sleep(time.Millisecond * 60)
 		case Candidate:
+
+			r.mu.Lock()
+			r.currentTerm++
+			r.votedFor = r.me
+			r.voteCount = 1
+			r.persist()
+			r.mu.Unlock()
+
 			go r.startElections()
 
 			select {

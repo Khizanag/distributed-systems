@@ -361,13 +361,6 @@ func (r *Raft) startElections() {
 		fmt.Printf("-- Raft #%d started Elections\n", r.me)
 	}
 
-	r.mu.Lock()
-	r.currentTerm++
-	r.votedFor = r.me
-	r.voteCount = 1
-	r.persist()
-	r.mu.Unlock()
-
 	args := r.getRequestVoteArgs()
 
 	for i := range r.peers {

@@ -357,30 +357,23 @@ func (r *Raft) increaseTermAndBecameFollower(newTerm int) {
 }
 
 func (r *Raft) startElections() {
+	r.mu.Lock()
+
 	if isDebugMode {
-		fmt.Printf("-- Raft #%d started Elections\n", r.me)
+		fmt.Printf("-- Raft #%d started Elections with: currentTerm: %v		commitIndex: %v		logLen: %v\n", r.me, r.currentTerm, r.commitIndex, len(r.log))
 	}
 
-	r.mu.Lock()
-	r.currentTerm++
-	r.votedFor = r.me
-	r.voteCount = 1
-	r.persist()
-	r.mu.Unlock()
-
 	args := r.getRequestVoteArgs()
+	r.mu.Unlock()
 
 	for i := range r.peers {
 		if !r.killed() && i != r.me && r.getRole(true) == Candidate {
-			go r.sendRequestVoteHandler(i, args)
+			go r.sendRequestVoteHandler(i, &args)
 		}
 	}
 }
 
-func (r *Raft) getRequestVoteArgs() *RequestVoteArgs {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
+func (rf *Raft) getRequestVoteArgs() *RequestVoteArgs {
 	return &RequestVoteArgs{
 		Term:         r.currentTerm,
 		CandidateID:  r.me,
@@ -665,6 +658,14 @@ func (r *Raft) Worker() { // TODO change
 			go r.broadcastHeartbeat()
 			time.Sleep(time.Millisecond * 60)
 		case Candidate:
+
+			r.mu.Lock()
+			r.currentTerm++
+			r.votedFor = r.me
+			r.voteCount = 1
+			r.persist()
+			r.mu.Unlock()
+
 			go r.startElections()
 
 			select {
