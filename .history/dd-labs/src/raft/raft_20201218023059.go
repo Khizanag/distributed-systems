@@ -522,7 +522,7 @@ func (r *Raft) Start(command interface{}) (int, int, bool) {
 		}
 	}
 
-	return len(r.log) - 1, r.getLastLog(false).Term, r.role == Leader
+	return len(r.log) - 1, r.getLastLog(true).Term, r.role == Leader
 }
 
 func (rf *Raft) Run() {

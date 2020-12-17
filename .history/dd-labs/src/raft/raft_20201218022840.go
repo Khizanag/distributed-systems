@@ -511,7 +511,7 @@ func (r *Raft) Start(command interface{}) (int, int, bool) {
 
 	if r.role == Leader {
 		newLog := LogEntry{
-			Index:   r.getLastLog(false).Index + 1,
+			Index:   r.getLastLog().Index + 1,
 			Term:    r.currentTerm,
 			Command: command,
 		}
@@ -522,7 +522,7 @@ func (r *Raft) Start(command interface{}) (int, int, bool) {
 		}
 	}
 
-	return len(r.log) - 1, r.getLastLog(false).Term, r.role == Leader
+	return len(r.log) - 1, r.getLastLog().Term, r.role == Leader
 }
 
 func (rf *Raft) Run() {
@@ -587,7 +587,36 @@ func (r *Raft) killed() bool {
 // Make() must return quickly, so it should start goroutines
 // for any long-running work.
 //
-func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
+func Make(peers []*labrpc.ClientEnd, me int,
+	// persister *Persister, applyCh chan ApplyMsg) *Raft {
+	// rf := &Raft{}
+	// rf.peers = peers
+	// rf.persister = persister
+	// rf.me = me
+
+	// // Your initialization code here (2A, 2B, 2C).
+	// rf.role = Follower
+	// rf.voteCount = 0
+
+	// rf.currentTerm = 0
+	// rf.votedFor = -1
+	// rf.log = append(rf.log, LogEntry{Term: 0})
+
+	// rf.commitIndex = 0
+	// rf.lastApplied = 0
+
+	// rf.chanApply = applyCh
+	// rf.chanGrantVote = make(chan bool, 100)
+	// rf.chanWinElect = make(chan bool, 100)
+	// rf.chanHeartbeat = make(chan bool, 100)
+
+	// // initialize from state persisted before a crash
+	// rf.readPersist(persister.ReadRaftState())
+
+	// go rf.Run()
+
+	// return rf
+	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	r := &Raft{}
 	r.peers = peers
 	r.persister = persister
@@ -640,19 +669,25 @@ func (r *Raft) getServersCount() int {
 	return len(r.peers)
 }
 
-func (r *Raft) getRole(mustBeSafe bool) Role {
-	if mustBeSafe {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-	}
+func (r *Raft) getRoleSafe() Role {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.getRole()
+}
+
+func (r *Raft) getRole() Role {
 	return r.role
 }
 
-func (r *Raft) getLastLog(mustBeSafe bool) LogEntry {
+func (r *Raft) getLastLogSafe(mustBeSafe bool) LogEntry {
 	if mustBeSafe {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 	}
 
+	return r.getLastLog()
+}
+
+func (r *Raft) getLastLog() Log {
 	return r.log[len(r.log)-1]
 }

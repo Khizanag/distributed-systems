@@ -522,7 +522,7 @@ func (r *Raft) Start(command interface{}) (int, int, bool) {
 		}
 	}
 
-	return len(r.log) - 1, r.getLastLog(false).Term, r.role == Leader
+	return len(r.log) - 1, r.getLastLog(true).Term, r.role == Leader
 }
 
 func (rf *Raft) Run() {
@@ -587,7 +587,8 @@ func (r *Raft) killed() bool {
 // Make() must return quickly, so it should start goroutines
 // for any long-running work.
 //
-func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
+func Make(peers []*labrpc.ClientEnd, me int,
+	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	r := &Raft{}
 	r.peers = peers
 	r.persister = persister
