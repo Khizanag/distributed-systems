@@ -289,7 +289,7 @@ func (rf *Raft) broadcastRequestVote() {
 	rf.mu.Lock()
 	args := &RequestVoteArgs{}
 	args.Term = rf.currentTerm
-	args.CandidateID = rf.me
+	args.CandidateId = rf.me
 	args.LastLogIndex = rf.getLastLogEntry(false).Index
 	args.LastLogTerm = rf.getLastLogEntry(false).Term
 	rf.mu.Unlock()

@@ -160,7 +160,7 @@ func (raft *Raft) readPersist(data []byte) {
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
 	Term         int
-	CandidateID  int
+	CandidateId  int
 	LastLogIndex int
 	LastLogTerm  int
 }
@@ -201,9 +201,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 
-	if (rf.votedFor == -1 || rf.votedFor == args.CandidateID) && rf.isUpToDate(args.LastLogTerm, args.LastLogIndex) {
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.isUpToDate(args.LastLogTerm, args.LastLogIndex) {
 		// vote for the candidate
-		rf.votedFor = args.CandidateID
+		rf.votedFor = args.CandidateId
 		reply.VoteGranted = true
 		rf.chanGrantVote <- true
 	}
@@ -213,7 +213,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // check if candidate's log is at least as new as the voter.
 //
 func (rf *Raft) isUpToDate(candidateTerm int, candidateIndex int) bool {
-	term, index := rf.getLastLogEntry(false).Term, rf.getLastLogEntry(false).Index
+	term, index := rf.getLastLog(false).Term, rf.getLastLog(false).Index
 	return candidateTerm > term || (candidateTerm == term && candidateIndex >= index)
 }
 
@@ -273,7 +273,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 				rf.persist()
 				rf.nextIndex = make([]int, len(rf.peers))
 				rf.matchIndex = make([]int, len(rf.peers))
-				nextIndex := rf.getLastLogEntry(false).Index + 1
+				nextIndex := rf.getLastLogIndex() + 1
 				for i := range rf.nextIndex {
 					rf.nextIndex[i] = nextIndex
 				}
@@ -289,9 +289,9 @@ func (rf *Raft) broadcastRequestVote() {
 	rf.mu.Lock()
 	args := &RequestVoteArgs{}
 	args.Term = rf.currentTerm
-	args.CandidateID = rf.me
-	args.LastLogIndex = rf.getLastLogEntry(false).Index
-	args.LastLogTerm = rf.getLastLogEntry(false).Term
+	args.CandidateId = rf.me
+	args.LastLogIndex = rf.getLastLogIndex()
+	args.LastLogTerm = rf.getLastLogTerm()
 	rf.mu.Unlock()
 
 	for server := range rf.peers {
@@ -326,7 +326,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.Term < rf.currentTerm {
 		// reject requests with stale term number
 		reply.Term = rf.currentTerm
-		reply.NextTryIndex = rf.getLastLogEntry(false).Index + 1
+		reply.NextTryIndex = rf.getLastLogIndex() + 1
 		return
 	}
 
@@ -342,8 +342,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	reply.Term = rf.currentTerm
 
-	if args.PrevLogIndex > rf.getLastLogEntry(false).Index {
-		reply.NextTryIndex = rf.getLastLogEntry(false).Index + 1
+	if args.PrevLogIndex > rf.getLastLogIndex() {
+		reply.NextTryIndex = rf.getLastLogIndex() + 1
 		return
 	}
 
@@ -370,7 +370,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 		if rf.commitIndex < args.LeaderCommit {
 			// update commitIndex and apply log
-			rf.commitIndex = min(args.LeaderCommit, rf.getLastLogEntry(false).Index)
+			rf.commitIndex = min(args.LeaderCommit, rf.getLastLogIndex())
 			go rf.applyLog()
 		}
 	}
@@ -419,11 +419,11 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			rf.matchIndex[server] = rf.nextIndex[server] - 1
 		}
 	} else {
-		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogEntry(false).Index)
+		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogIndex())
 	}
 
 	baseIndex := rf.log[0].Index
-	for N := rf.getLastLogEntry(false).Index; N > rf.commitIndex && rf.log[N-baseIndex].Term == rf.currentTerm; N-- {
+	for N := rf.getLastLogIndex(); N > rf.commitIndex && rf.log[N-baseIndex].Term == rf.currentTerm; N-- {
 		// find if there exists an N to update commitIndex
 		count := 1
 		for i := range rf.peers {
@@ -439,6 +439,14 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	}
 
 	return ok
+}
+
+type InstallSnapshotArgs struct {
+	Term              int
+	LeaderID          int
+	LastIncludedIndex int
+	LastIncludedTerm  int
+	Data              []byte
 }
 
 //
@@ -457,12 +465,12 @@ func (rf *Raft) broadcastHeartbeat() {
 			if rf.nextIndex[server] > baseIndex {
 				args := &AppendEntriesArgs{}
 				args.Term = rf.currentTerm
-				args.LeaderID = rf.me
+				args.LeaderId = rf.me
 				args.PrevLogIndex = rf.nextIndex[server] - 1
 				if args.PrevLogIndex >= baseIndex {
 					args.PrevLogTerm = rf.log[args.PrevLogIndex-baseIndex].Term
 				}
-				if rf.nextIndex[server] <= rf.getLastLogEntry(false).Index {
+				if rf.nextIndex[server] <= rf.getLastLogIndex() {
 					args.Entries = rf.log[rf.nextIndex[server]-baseIndex:]
 				}
 				args.LeaderCommit = rf.commitIndex
@@ -494,7 +502,7 @@ func (r *Raft) Start(command interface{}) (int, int, bool) {
 
 	if r.role == Leader {
 		newLog := LogEntry{
-			Index:   r.getLastLogEntry(false).Index + 1,
+			Index:   r.getLastLog(false).Index + 1,
 			Term:    r.currentTerm,
 			Command: command,
 		}
@@ -505,7 +513,7 @@ func (r *Raft) Start(command interface{}) (int, int, bool) {
 		}
 	}
 
-	return len(r.log) - 1, r.getLastLogEntry(false).Term, r.role == Leader
+	return len(r.log) - 1, r.getLastLog(false).Term, r.role == Leader
 }
 
 func (rf *Raft) Run() {
@@ -639,7 +647,7 @@ func (r *Raft) getRole(mustBeSafe bool) Role {
 	return r.role
 }
 
-func (r *Raft) getLastLogEntry(mustBeSafe bool) LogEntry {
+func (r *Raft) getLastLog(mustBeSafe bool) LogEntry {
 	if mustBeSafe {
 		r.mu.Lock()
 		defer r.mu.Unlock()

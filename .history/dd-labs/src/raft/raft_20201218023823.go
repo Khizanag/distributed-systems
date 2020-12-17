@@ -201,9 +201,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = rf.currentTerm
 	reply.VoteGranted = false
 
-	if (rf.votedFor == -1 || rf.votedFor == args.CandidateID) && rf.isUpToDate(args.LastLogTerm, args.LastLogIndex) {
+	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && rf.isUpToDate(args.LastLogTerm, args.LastLogIndex) {
 		// vote for the candidate
-		rf.votedFor = args.CandidateID
+		rf.votedFor = args.CandidateId
 		reply.VoteGranted = true
 		rf.chanGrantVote <- true
 	}
@@ -289,7 +289,7 @@ func (rf *Raft) broadcastRequestVote() {
 	rf.mu.Lock()
 	args := &RequestVoteArgs{}
 	args.Term = rf.currentTerm
-	args.CandidateID = rf.me
+	args.CandidateId = rf.me
 	args.LastLogIndex = rf.getLastLogEntry(false).Index
 	args.LastLogTerm = rf.getLastLogEntry(false).Term
 	rf.mu.Unlock()
