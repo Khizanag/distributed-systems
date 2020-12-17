@@ -374,7 +374,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 //
 // apply log entries with index in range [lastApplied + 1, commitIndex]
 //
-func (r *Raft) applyLogWorker() {
+func (r *Raft) applyLog() {
+	// rf.mu.Lock()
+	// defer rf.mu.Unlock()
+
+	// baseIndex := rf.log[0].Index
+
+	// for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
+	// 	msg := ApplyMsg{}
+	// 	msg.CommandIndex = i
+	// 	msg.CommandValid = true
+	// 	msg.Command = rf.log[i-baseIndex].Command
+	// 	rf.applyCh <- msg
+	// }
+	// rf.lastApplied = rf.commitIndex
 	for !r.killed() {
 		r.mu.Lock()
 		for r.commitIndex > r.lastApplied {
@@ -606,7 +619,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	r.readPersist(persister.ReadRaftState())
 
 	go r.Run()
-	go r.applyLogWorker()
+	go r.applyLog()
 
 	return r
 }

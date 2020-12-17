@@ -366,7 +366,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if rf.commitIndex < args.LeaderCommit {
 			// update commitIndex and apply log
 			rf.commitIndex = min(args.LeaderCommit, rf.getLastLogEntry(false).Index)
-			// go rf.applyLog()
+			go rf.applyLog()
 		}
 	}
 }
@@ -374,18 +374,31 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 //
 // apply log entries with index in range [lastApplied + 1, commitIndex]
 //
-func (r *Raft) applyLogWorker() {
+func (r *Raft) applyLog() {
+	// rf.mu.Lock()
+	// defer rf.mu.Unlock()
+
+	// baseIndex := rf.log[0].Index
+
+	// for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
+	// 	msg := ApplyMsg{}
+	// 	msg.CommandIndex = i
+	// 	msg.CommandValid = true
+	// 	msg.Command = rf.log[i-baseIndex].Command
+	// 	rf.applyCh <- msg
+	// }
+	// rf.lastApplied = rf.commitIndex
 	for !r.killed() {
 		r.mu.Lock()
 		for r.commitIndex > r.lastApplied {
 			r.lastApplied++
-			if len(r.log) <= r.lastApplied {
+			if len(r.logs) <= r.lastApplied {
 				break
 			}
 			applyMsg := ApplyMsg{
 				CommandValid: true,
 				CommandIndex: r.lastApplied,
-				Command:      r.log[r.lastApplied].Command,
+				Command:      r.logs[r.lastApplied].Command,
 			}
 			r.applyCh <- applyMsg
 
@@ -606,7 +619,6 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	r.readPersist(persister.ReadRaftState())
 
 	go r.Run()
-	go r.applyLogWorker()
 
 	return r
 }
