@@ -409,7 +409,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		}
 		if count > len(rf.peers)/2 {
 			rf.commitIndex = N
-			// go r.applyLog()
+			go rf.applyLog()
 			break
 		}
 	}
@@ -557,7 +557,7 @@ func (r *Raft) Worker() {
 			select {
 			case <-r.voteGrantedCh: // Do nothing
 			case <-r.heartbeatReceivedCh: // Do nothing
-			case <-time.After(r.getRandomFollowerWaitDuration()):
+			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
 				r.role = Candidate
 				r.persist()
 			}
@@ -577,7 +577,7 @@ func (r *Raft) Worker() {
 			case <-r.heartbeatReceivedCh:
 				r.role = Follower
 			case <-r.electedAsLeader: // Do nothing
-			case <-time.After(r.getRandomFollowerWaitDuration()):
+			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
 			}
 		}
 	}
@@ -618,10 +618,6 @@ func (r *Raft) applyLogWorker() {
 // ###################                                         ##################
 // ##############################################################################
 // ##############################################################################
-
-func (r *Raft) getRandomFollowerWaitDuration() time.Duration {
-	return time.Millisecond * time.Duration(rand.Intn(300)+200)
-}
 
 func min(a int, b int) int {
 	if a < b {

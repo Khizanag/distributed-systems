@@ -409,7 +409,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		}
 		if count > len(rf.peers)/2 {
 			rf.commitIndex = N
-			// go r.applyLog()
+			go r.applyLog()
 			break
 		}
 	}

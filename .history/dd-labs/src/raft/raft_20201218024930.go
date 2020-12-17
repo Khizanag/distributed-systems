@@ -409,7 +409,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		}
 		if count > len(rf.peers)/2 {
 			rf.commitIndex = N
-			// go r.applyLog()
+			go rf.applyLog()
 			break
 		}
 	}
@@ -544,40 +544,40 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	// initialize from state persisted before a crash
 	r.readPersist(persister.ReadRaftState())
 
-	go r.Worker()
+	go r.Run()
 	go r.applyLogWorker()
 
 	return r
 }
 
-func (r *Raft) Worker() {
-	for !r.killed() {
-		switch r.role {
+func (rf *Raft) Run() {
+	for {
+		switch rf.role {
 		case Follower:
 			select {
-			case <-r.voteGrantedCh: // Do nothing
-			case <-r.heartbeatReceivedCh: // Do nothing
-			case <-time.After(r.getRandomFollowerWaitDuration()):
-				r.role = Candidate
-				r.persist()
+			case <-rf.voteGrantedCh:
+			case <-rf.heartbeatReceivedCh:
+			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
+				rf.role = Candidate
+				rf.persist()
 			}
 		case Leader:
-			go r.broadcastHeartbeat()
+			go rf.broadcastHeartbeat()
 			time.Sleep(time.Millisecond * 60)
 		case Candidate:
-			r.mu.Lock()
-			r.currentTerm++
-			r.votedFor = r.me
-			r.voteCount = 1
-			r.persist()
-			r.mu.Unlock()
-			go r.broadcastRequestVote()
+			rf.mu.Lock()
+			rf.currentTerm++
+			rf.votedFor = rf.me
+			rf.voteCount = 1
+			rf.persist()
+			rf.mu.Unlock()
+			go rf.broadcastRequestVote()
 
 			select {
-			case <-r.heartbeatReceivedCh:
-				r.role = Follower
-			case <-r.electedAsLeader: // Do nothing
-			case <-time.After(r.getRandomFollowerWaitDuration()):
+			case <-rf.heartbeatReceivedCh:
+				rf.role = Follower
+			case <-rf.electedAsLeader:
+			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
 			}
 		}
 	}
@@ -618,10 +618,6 @@ func (r *Raft) applyLogWorker() {
 // ###################                                         ##################
 // ##############################################################################
 // ##############################################################################
-
-func (r *Raft) getRandomFollowerWaitDuration() time.Duration {
-	return time.Millisecond * time.Duration(rand.Intn(300)+200)
-}
 
 func min(a int, b int) int {
 	if a < b {
