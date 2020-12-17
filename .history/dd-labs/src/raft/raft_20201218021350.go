@@ -79,7 +79,7 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
-	role      Role
+	state     int
 	voteCount int
 
 	// Persistent state on all servers.
@@ -109,7 +109,7 @@ func (rf *Raft) GetState() (int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	term := rf.currentTerm
-	isleader := (rf.role == Leader)
+	isleader := (rf.state == STATE_LEADER)
 	return term, isleader
 }
 
@@ -208,7 +208,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	if args.Term > rf.currentTerm {
 		// become follower and update current term
-		rf.role = Follower
+		rf.state = STATE_FOLLOWER
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
 	}
@@ -268,13 +268,13 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	defer rf.persist()
 
 	if ok {
-		if rf.role != Candidate || rf.currentTerm != args.Term {
+		if rf.state != STATE_CANDIDATE || rf.currentTerm != args.Term {
 			// invalid request
 			return ok
 		}
 		if rf.currentTerm < reply.Term {
 			// revert to follower state and update current term
-			rf.role = Follower
+			rf.state = STATE_FOLLOWER
 			rf.currentTerm = reply.Term
 			rf.votedFor = -1
 			return ok
@@ -284,7 +284,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 			rf.voteCount++
 			if rf.voteCount > len(rf.peers)/2 {
 				// win the election
-				rf.role = Leader
+				rf.state = STATE_LEADER
 				rf.persist()
 				rf.nextIndex = make([]int, len(rf.peers))
 				rf.matchIndex = make([]int, len(rf.peers))
@@ -310,7 +310,7 @@ func (rf *Raft) broadcastRequestVote() {
 	rf.mu.Unlock()
 
 	for server := range rf.peers {
-		if server != rf.me && rf.role == Candidate {
+		if server != rf.me && rf.state == STATE_CANDIDATE {
 			go rf.sendRequestVote(server, args, &RequestVoteReply{})
 		}
 	}
@@ -347,7 +347,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	if args.Term > rf.currentTerm {
 		// become follower and update current term
-		rf.role = Follower
+		rf.state = STATE_FOLLOWER
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
 	}
@@ -415,14 +415,14 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
+	if !ok || rf.state != STATE_LEADER || args.Term != rf.currentTerm {
 		// invalid request
 		return ok
 	}
 	if reply.Term > rf.currentTerm {
 		// become follower and update current term
 		rf.currentTerm = reply.Term
-		rf.role = Follower
+		rf.state = STATE_FOLLOWER
 		rf.votedFor = -1
 		rf.persist()
 		return ok
@@ -476,7 +476,7 @@ func (rf *Raft) broadcastHeartbeat() {
 	baseIndex := rf.log[0].Index
 
 	for server := range rf.peers {
-		if server != rf.me && rf.role == Leader {
+		if server != rf.me && rf.state == STATE_LEADER {
 			if rf.nextIndex[server] > baseIndex {
 				args := &AppendEntriesArgs{}
 				args.Term = rf.currentTerm
@@ -515,7 +515,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	defer rf.mu.Unlock()
 
 	term, index := -1, -1
-	isLeader := (rf.role == Leader)
+	isLeader := (rf.state == STATE_LEADER)
 
 	if isLeader {
 		term = rf.currentTerm
@@ -538,19 +538,19 @@ func (rf *Raft) Kill() {
 
 func (rf *Raft) Run() {
 	for {
-		switch rf.role {
-		case Follower:
+		switch rf.state {
+		case STATE_FOLLOWER:
 			select {
 			case <-rf.chanGrantVote:
 			case <-rf.chanHeartbeat:
 			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
-				rf.role = Candidate
+				rf.state = STATE_CANDIDATE
 				rf.persist()
 			}
-		case Leader:
+		case STATE_LEADER:
 			go rf.broadcastHeartbeat()
 			time.Sleep(time.Millisecond * 60)
-		case Candidate:
+		case STATE_CANDIDATE:
 			rf.mu.Lock()
 			rf.currentTerm++
 			rf.votedFor = rf.me
@@ -561,7 +561,7 @@ func (rf *Raft) Run() {
 
 			select {
 			case <-rf.chanHeartbeat:
-				rf.role = Follower
+				rf.state = STATE_FOLLOWER
 			case <-rf.chanWinElect:
 			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
 			}
@@ -588,7 +588,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
-	rf.role = Follower
+	rf.state = STATE_FOLLOWER
 	rf.voteCount = 0
 
 	rf.currentTerm = 0

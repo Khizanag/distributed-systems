@@ -208,7 +208,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	if args.Term > rf.currentTerm {
 		// become follower and update current term
-		rf.role = Follower
+		rf.state = Follower
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
 	}
@@ -268,13 +268,13 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	defer rf.persist()
 
 	if ok {
-		if rf.role != Candidate || rf.currentTerm != args.Term {
+		if rf.state != Candidate || rf.currentTerm != args.Term {
 			// invalid request
 			return ok
 		}
 		if rf.currentTerm < reply.Term {
 			// revert to follower state and update current term
-			rf.role = Follower
+			rf.state = Follower
 			rf.currentTerm = reply.Term
 			rf.votedFor = -1
 			return ok
@@ -284,7 +284,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 			rf.voteCount++
 			if rf.voteCount > len(rf.peers)/2 {
 				// win the election
-				rf.role = Leader
+				rf.state = Leader
 				rf.persist()
 				rf.nextIndex = make([]int, len(rf.peers))
 				rf.matchIndex = make([]int, len(rf.peers))
@@ -310,7 +310,7 @@ func (rf *Raft) broadcastRequestVote() {
 	rf.mu.Unlock()
 
 	for server := range rf.peers {
-		if server != rf.me && rf.role == Candidate {
+		if server != rf.me && rf.state == Candidate {
 			go rf.sendRequestVote(server, args, &RequestVoteReply{})
 		}
 	}
@@ -347,7 +347,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	if args.Term > rf.currentTerm {
 		// become follower and update current term
-		rf.role = Follower
+		rf.state = Follower
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
 	}
@@ -415,14 +415,14 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
+	if !ok || rf.state != Leader || args.Term != rf.currentTerm {
 		// invalid request
 		return ok
 	}
 	if reply.Term > rf.currentTerm {
 		// become follower and update current term
 		rf.currentTerm = reply.Term
-		rf.role = Follower
+		rf.state = Follower
 		rf.votedFor = -1
 		rf.persist()
 		return ok
@@ -476,7 +476,7 @@ func (rf *Raft) broadcastHeartbeat() {
 	baseIndex := rf.log[0].Index
 
 	for server := range rf.peers {
-		if server != rf.me && rf.role == Leader {
+		if server != rf.me && rf.state == Leader {
 			if rf.nextIndex[server] > baseIndex {
 				args := &AppendEntriesArgs{}
 				args.Term = rf.currentTerm
@@ -515,7 +515,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	defer rf.mu.Unlock()
 
 	term, index := -1, -1
-	isLeader := (rf.role == Leader)
+	isLeader := (rf.state == Leader)
 
 	if isLeader {
 		term = rf.currentTerm
@@ -538,13 +538,13 @@ func (rf *Raft) Kill() {
 
 func (rf *Raft) Run() {
 	for {
-		switch rf.role {
+		switch rf.state {
 		case Follower:
 			select {
 			case <-rf.chanGrantVote:
 			case <-rf.chanHeartbeat:
 			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
-				rf.role = Candidate
+				rf.state = Candidate
 				rf.persist()
 			}
 		case Leader:
@@ -561,7 +561,7 @@ func (rf *Raft) Run() {
 
 			select {
 			case <-rf.chanHeartbeat:
-				rf.role = Follower
+				rf.state = Follower
 			case <-rf.chanWinElect:
 			case <-time.After(time.Millisecond * time.Duration(rand.Intn(300)+200)):
 			}
@@ -588,7 +588,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.me = me
 
 	// Your initialization code here (2A, 2B, 2C).
-	rf.role = Follower
+	rf.state = Follower
 	rf.voteCount = 0
 
 	rf.currentTerm = 0
