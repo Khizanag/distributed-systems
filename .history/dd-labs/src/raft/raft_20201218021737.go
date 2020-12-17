@@ -101,10 +101,13 @@ type Raft struct {
 
 // return currentTerm and whether this server
 // believes it is the leader.
-func (r *Raft) GetState() (int, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.currentTerm, r.role == Leader
+func (rf *Raft) GetState() (int, bool) {
+	// Your code here (2A).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	term := rf.currentTerm
+	isleader := (rf.role == Leader)
+	return term, isleader
 }
 
 func (rf *Raft) getLastLogTerm() int {
