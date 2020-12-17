@@ -82,7 +82,7 @@ type Raft struct {
 	votedFor    int
 
 	// data for 2B
-	log         []LogEntry
+	logs        []Log
 	commitIndex int   // index of highest log entry known to be committed (initialized to 0, increases monotonically)
 	lastApplied int   // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 	nextIndex   []int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)

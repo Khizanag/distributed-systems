@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"../labgob"
 	"../labrpc"
 )
 
@@ -77,27 +78,28 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-	role        Role // role of this server: follower, candidate or leader
+
+	role      Role
+	voteCount int
+
+	// Persistent state on all servers.
 	currentTerm int
 	votedFor    int
-
-	// data for 2B
 	log         []LogEntry
-	commitIndex int   // index of highest log entry known to be committed (initialized to 0, increases monotonically)
-	lastApplied int   // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
-	nextIndex   []int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
-	matchIndex  []int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 
-	// applyCh             chan ApplyMsg
-	// heartbeatReceivedCh chan bool
-	// voteGrantedCh       chan bool
-	// becameLeaderCh      chan bool
+	// Volatile state on all servers.
+	commitIndex int
+	lastApplied int
+
+	// Volatile state on leaders.
+	nextIndex  []int
+	matchIndex []int
+
+	// Channels between raft peers.
 	chanApply     chan ApplyMsg
 	chanGrantVote chan bool
 	chanWinElect  chan bool
 	chanHeartbeat chan bool
-
-	voteCount int
 }
 
 // return currentTerm and whether this server
@@ -146,19 +148,38 @@ func (raft *Raft) readPersist(data []byte) {
 	var dead int32
 	var currentTerm int
 	var votedFor int
-	var log []LogEntry
+	var logs []Log
 
 	if d.Decode(&dead) != nil ||
 		d.Decode(&currentTerm) != nil ||
 		d.Decode(&votedFor) != nil ||
-		d.Decode(&log) != nil {
+		d.Decode(&logs) != nil {
 		fmt.Printf("Error during decoding information\n")
 	} else {
 		raft.dead = dead
 		raft.currentTerm = currentTerm
 		raft.votedFor = votedFor
-		raft.log = log
+		raft.logs = logs
 	}
+}
+
+//
+// encode current raft state.
+//
+func (rf *Raft) getRaftState() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	return w.Bytes()
+}
+
+//
+// get previous encoded raft state size.
+//
+func (rf *Raft) GetRaftStateSize() int {
+	return rf.persister.RaftStateSize()
 }
 
 //
