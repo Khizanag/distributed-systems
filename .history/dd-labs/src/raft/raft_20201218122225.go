@@ -478,6 +478,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	defer rf.persist()
 
 	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
+		// invalid request
 		return ok
 	}
 	if reply.Term > rf.currentTerm {
@@ -494,7 +495,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogEntry(false).Index)
 	}
 
-	rf.updateCommitIndex()
+	r.updateCommitIndex()
 
 	return ok
 }

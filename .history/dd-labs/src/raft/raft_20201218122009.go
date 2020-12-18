@@ -478,6 +478,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	defer rf.persist()
 
 	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
+		// invalid request
 		return ok
 	}
 	if reply.Term > rf.currentTerm {
@@ -494,15 +495,13 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogEntry(false).Index)
 	}
 
-	rf.updateCommitIndex()
-
 	return ok
 }
 
 func (r *Raft) updateCommitIndex() {
-	for N := r.getLastLogEntry(false).Index; N > r.commitIndex && r.log[N].Term == r.currentTerm; N-- {
-		if r.countServersThatReceived(N) > r.getServersCount()/2 {
-			r.commitIndex = N
+	for N := rf.getLastLogEntry(false).Index; N > rf.commitIndex && rf.log[N].Term == rf.currentTerm; N-- {
+		if rf.countServersThatReceived(N) > rf.getServersCount()/2 {
+			rf.commitIndex = N
 			break
 		}
 	}
