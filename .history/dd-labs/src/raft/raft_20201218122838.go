@@ -477,7 +477,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 }
 
 func (rf *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	ok := rf.sendAppendEntries(server, args, reply)
+	ok := r.sendAppendEntries(server, args, reply)
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()

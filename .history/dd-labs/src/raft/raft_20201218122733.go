@@ -476,9 +476,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
-func (rf *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	ok := rf.sendAppendEntries(server, args, reply)
-
+func (r *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer rf.persist()
@@ -501,8 +499,6 @@ func (rf *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, re
 	}
 
 	rf.updateCommitIndex()
-
-	return ok
 }
 
 func (r *Raft) updateCommitIndex() {

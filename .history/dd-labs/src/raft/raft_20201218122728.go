@@ -476,33 +476,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
-func (rf *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	ok := rf.sendAppendEntries(server, args, reply)
+func (r *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	defer rf.persist()
-
-	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
-		return ok
-	}
-	if reply.Term > rf.currentTerm {
-		rf.increaseTermAndBecameFollower(reply.Term)
-		return ok
-	}
-
-	if reply.Success {
-		if len(args.Entries) > 0 {
-			rf.nextIndex[server] = args.Entries[len(args.Entries)-1].Index + 1
-			rf.matchIndex[server] = rf.nextIndex[server] - 1
-		}
-	} else {
-		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogEntry(false).Index)
-	}
-
-	rf.updateCommitIndex()
-
-	return ok
 }
 
 func (r *Raft) updateCommitIndex() {
