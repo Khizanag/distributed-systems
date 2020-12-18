@@ -526,19 +526,25 @@ func (rf *Raft) broadcastHeartbeat() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	baseIndex := rf.log[0].Index
+
 	for server := range rf.peers {
 		if server != rf.me && rf.role == Leader {
-			args := &AppendEntriesArgs{}
-			args.Term = rf.currentTerm
-			args.LeaderID = rf.me
-			args.PrevLogIndex = rf.nextIndex[server] - 1
-			args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
-			if rf.nextIndex[server] <= rf.getLastLogEntry(false).Index {
-				args.Entries = rf.log[rf.nextIndex[server]:]
-			}
-			args.LeaderCommit = rf.commitIndex
+			if rf.nextIndex[server] > baseIndex {
+				args := &AppendEntriesArgs{}
+				args.Term = rf.currentTerm
+				args.LeaderID = rf.me
+				args.PrevLogIndex = rf.nextIndex[server] - 1
+				if args.PrevLogIndex >= baseIndex {
+					args.PrevLogTerm = rf.log[args.PrevLogIndex-baseIndex].Term
+				}
+				if rf.nextIndex[server] <= rf.getLastLogEntry(false).Index {
+					args.Entries = rf.log[rf.nextIndex[server]-baseIndex:]
+				}
+				args.LeaderCommit = rf.commitIndex
 
-			go rf.sendAppendEntries(server, args, &AppendEntriesReply{})
+				go rf.sendAppendEntries(server, args, &AppendEntriesReply{})
+			}
 		}
 	}
 }
