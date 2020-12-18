@@ -386,9 +386,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
-		rf.rejectAppendEntriesRequest(args, reply)
+		rf.rejecAppendEntriesRequest(args, reply)
 	} else if args.PrevLogIndex >= 0 { // TODO -1
-		rf.acceptAppendEntriesRequest(args, reply)
+		rf.receiveAppendEntriesRequest(args, reply)
 	}
 }
 
@@ -405,9 +405,9 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 }
 
 func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	term := r.log[args.PrevLogIndex].Term
+	term := rf.log[args.PrevLogIndex].Term
 	for i := args.PrevLogIndex - 1; i >= 0; i-- {
-		if r.log[i].Term != term {
+		if rf.log[i].Term != term {
 			reply.NextTryIndex = i + 1
 			break
 		}

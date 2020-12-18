@@ -386,13 +386,19 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
-		rf.rejectAppendEntriesRequest(args, reply)
+		term := rf.log[args.PrevLogIndex].Term
+		for i := args.PrevLogIndex - 1; i >= 0; i-- {
+			if rf.log[i].Term != term {
+				reply.NextTryIndex = i + 1
+				break
+			}
+		}
 	} else if args.PrevLogIndex >= 0 { // TODO -1
-		rf.acceptAppendEntriesRequest(args, reply)
+		rf.receiveAppendEntriesRequest(args, reply)
 	}
 }
 
-func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+func (r *Raft) receiveAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	r.log = r.log[:args.PrevLogIndex+1]
 	r.log = append(r.log, args.Entries...)
 
@@ -401,16 +407,6 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 
 	if r.commitIndex < args.LeaderCommit {
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
-	}
-}
-
-func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	term := r.log[args.PrevLogIndex].Term
-	for i := args.PrevLogIndex - 1; i >= 0; i-- {
-		if r.log[i].Term != term {
-			reply.NextTryIndex = i + 1
-			break
-		}
 	}
 }
 

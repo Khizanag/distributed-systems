@@ -386,7 +386,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
-		rf.rejectAppendEntriesRequest(args, reply)
+		rf.rejecAppendEntriesRequest(args, reply)
 	} else if args.PrevLogIndex >= 0 { // TODO -1
 		rf.acceptAppendEntriesRequest(args, reply)
 	}
