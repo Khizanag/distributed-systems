@@ -205,6 +205,7 @@ func (r *Raft) shouldAcceptRequestVote(args *RequestVoteArgs) bool {
 	return r.candidateLogIsUpToDate(args) && (r.votedFor == -1 || r.votedFor == args.CandidateID)
 }
 
+// TODO add vote didn't granted channel
 func (r *Raft) acceptVoteRequest(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if isDebugMode {
 		fmt.Printf("-- RequestVote: Raft#%v voted for Raft#%v\n", r.me, args.CandidateID)

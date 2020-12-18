@@ -205,6 +205,7 @@ func (r *Raft) shouldAcceptRequestVote(args *RequestVoteArgs) bool {
 	return r.candidateLogIsUpToDate(args) && (r.votedFor == -1 || r.votedFor == args.CandidateID)
 }
 
+// TODO add vote didn't granted channel
 func (r *Raft) acceptVoteRequest(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if isDebugMode {
 		fmt.Printf("-- RequestVote: Raft#%v voted for Raft#%v\n", r.me, args.CandidateID)
@@ -285,30 +286,30 @@ func (r *Raft) sendRequestVoteHandler(index int, args *RequestVoteArgs) {
 		reply.Term > r.currentTerm ||
 		!reply.VoteGranted {
 		r.voteWasNotGranted(reply)
-	} else {
+	} else
 		r.voteWasGranted()
 	}
 }
 
-func (r *Raft) voteWasGranted() {
+func (r *Raft) voteWasNotGranted() {
 	r.voteCount++
-	if r.voteCount > r.getServersCount()/2 {
-		r.role = Leader
-		if isDebugMode {
-			fmt.Printf("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- > Raft# %d became LEADER\n", r.me)
-		}
-		r.nextIndex = make([]int, len(r.peers))
-		r.matchIndex = make([]int, len(r.peers))
-		for i := range r.peers {
-			r.nextIndex[i] = r.getLastLogEntry(false).Index + 1
-		}
+		if r.voteCount > r.getServersCount()/2 {
+			r.role = Leader
+			if isDebugMode {
+				fmt.Printf("-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- > Raft# %d became LEADER\n", r.me)
+			}
+			r.nextIndex = make([]int, len(r.peers))
+			r.matchIndex = make([]int, len(r.peers))
+			for i := range r.peers {
+				r.nextIndex[i] = r.getLastLogEntry(false).Index + 1
+			}
 
-		r.electedAsLeader <- true
-	}
+			r.electedAsLeader <- true
+		}
 }
 
 func (r *Raft) voteWasNotGranted(reply *RequestVoteReply) {
-	r.tryIncreaseCurrentTerm(reply.Term)
+	r.tryIncreaseCurrentTerms(reply.Term)
 }
 
 func (r *Raft) holdElection() {
