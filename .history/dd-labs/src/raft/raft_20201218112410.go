@@ -537,7 +537,7 @@ func (rf *Raft) broadcastHeartbeat() {
 			// // }
 			// args.LeaderCommit = rf.commitIndex
 
-			go rf.sendAppendEntries(server, args, reply)
+			go rf.sendAppendEntries(server, args, &AppendEntriesReply{})
 		}
 	}
 }

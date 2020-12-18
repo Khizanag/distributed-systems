@@ -525,19 +525,17 @@ func (rf *Raft) broadcastHeartbeat() {
 
 	for server := range rf.peers {
 		if server != rf.me && rf.role == Leader {
-			args := rf.getAppendEntriesArgs(server)
-			reply := rf.getAppendEntriesReply(server)
-			// &AppendEntriesArgs{}
-			// args.Term = rf.currentTerm
-			// args.LeaderID = rf.me
-			// args.PrevLogIndex = rf.nextIndex[server] - 1
-			// args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
-			// // if rf.nextIndex[server] <= rf.getLastLogEntry(false).Index {
-			// args.Entries = rf.log[rf.nextIndex[server]:]
-			// // }
-			// args.LeaderCommit = rf.commitIndex
+			args := &AppendEntriesArgs{}
+			args.Term = rf.currentTerm
+			args.LeaderID = rf.me
+			args.PrevLogIndex = rf.nextIndex[server] - 1
+			args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
+			// if rf.nextIndex[server] <= rf.getLastLogEntry(false).Index {
+			args.Entries = rf.log[rf.nextIndex[server]:]
+			// }
+			args.LeaderCommit = rf.commitIndex
 
-			go rf.sendAppendEntries(server, args, reply)
+			go rf.sendAppendEntries(server, args, &AppendEntriesReply{})
 		}
 	}
 }
@@ -552,10 +550,6 @@ func (r *Raft) getAppendEntriesArgs(server int) *AppendEntriesArgs {
 		Entries:      r.log[r.nextIndex[server]:],
 		LeaderCommit: r.commitIndex,
 	}
-}
-
-func (r *Raft) getAppendEntriesReply(server int) *AppendEntriesReply {
-	return &AppendEntriesReply{}
 }
 
 //

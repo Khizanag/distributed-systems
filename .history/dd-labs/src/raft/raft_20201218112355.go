@@ -526,7 +526,7 @@ func (rf *Raft) broadcastHeartbeat() {
 	for server := range rf.peers {
 		if server != rf.me && rf.role == Leader {
 			args := rf.getAppendEntriesArgs(server)
-			reply := rf.getAppendEntriesReply(server)
+			reply = rf.getAppendEntriesReply(server)
 			// &AppendEntriesArgs{}
 			// args.Term = rf.currentTerm
 			// args.LeaderID = rf.me
@@ -537,7 +537,7 @@ func (rf *Raft) broadcastHeartbeat() {
 			// // }
 			// args.LeaderCommit = rf.commitIndex
 
-			go rf.sendAppendEntries(server, args, reply)
+			go rf.sendAppendEntries(server, args, &AppendEntriesReply{})
 		}
 	}
 }
@@ -555,7 +555,7 @@ func (r *Raft) getAppendEntriesArgs(server int) *AppendEntriesArgs {
 }
 
 func (r *Raft) getAppendEntriesReply(server int) *AppendEntriesReply {
-	return &AppendEntriesReply{}
+
 }
 
 //
