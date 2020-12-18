@@ -376,8 +376,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
-	rf.tryIncreaseCurrentTerm(args.Term)
+	if args.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.role = Follower
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
+	}
 
+	// confirm heartbeat to refresh timeout
 	rf.heartbeatReceivedCh <- true
 
 	reply.Term = rf.currentTerm
@@ -395,8 +401,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 				break
 			}
 		}
-	} else if args.PrevLogIndex >= 0 { // TODO -1
-		rf.log = rf.log[:args.PrevLogIndex+1]
+	} else if args.PrevLogIndex >= baseIndex-1 {
+		// otherwise log up to prevLogIndex are safe.
+		// merge lcoal log and entries from leader, and apply log if commitIndex changes.
+		rf.log = rf.log[:args.PrevLogIndex-baseIndex+1]
 		rf.log = append(rf.log, args.Entries...)
 
 		reply.Success = true
