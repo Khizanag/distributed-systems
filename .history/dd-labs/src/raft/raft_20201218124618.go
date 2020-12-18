@@ -278,6 +278,42 @@ func (r *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Request
 	return ok
 }
 
+// func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+// 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+// 	rf.mu.Lock()
+// 	defer rf.mu.Unlock()
+// 	defer rf.persist()
+
+// 	if ok == false || rf.role != Candidate || rf.currentTerm != args.Term {
+// 		return ok
+// 	}
+// 	if rf.currentTerm < reply.Term {
+// 		// revert to follower state and update current term
+// 		rf.role = Follower
+// 		rf.currentTerm = reply.Term
+// 		rf.votedFor = -1
+// 		return ok
+// 	}
+
+// 	if reply.VoteGranted {
+// 		rf.voteCount++
+// 		if rf.voteCount > len(rf.peers)/2 {
+// 			// win the election
+// 			rf.role = Leader
+// 			rf.persist()
+// 			rf.nextIndex = make([]int, len(rf.peers))
+// 			rf.matchIndex = make([]int, len(rf.peers))
+// 			nextIndex := rf.getLastLogEntry(false).Index + 1
+// 			for i := range rf.nextIndex {
+// 				rf.nextIndex[i] = nextIndex
+// 			}
+// 			rf.electedAsLeader <- true
+// 		}
+// 	}
+
+// 	return ok
+// }
+
 func (r *Raft) sendRequestVoteHandler(index int, args *RequestVoteArgs) {
 
 	reply := &RequestVoteReply{}
@@ -320,12 +356,17 @@ func (r *Raft) increaseTermAndBecameFollower(newTerm int) {
 	r.role = Follower
 }
 
-func (r *Raft) holdElection() {
+func (r *Raft) startElections() {
 	if isDebugMode {
 		fmt.Printf("-- Raft #%d started Elections\n", r.me)
 	}
 
-	r.formalizeElectionStart()
+	r.mu.Lock()
+	r.currentTerm++
+	r.votedFor = r.me
+	r.voteCount = 1
+	r.persist()
+	r.mu.Unlock()
 
 	args := r.getRequestVoteArgs()
 
@@ -334,16 +375,6 @@ func (r *Raft) holdElection() {
 			go r.sendRequestVoteHandler(i, args)
 		}
 	}
-}
-
-func (r *Raft) formalizeElectionStart() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
-
-	r.currentTerm++
-	r.votedFor = r.me
-	r.voteCount = 1
 }
 
 func (r *Raft) getRequestVoteArgs() *RequestVoteArgs {
@@ -444,29 +475,29 @@ func (r *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *App
 	return ok
 }
 
-func (r *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	ok := r.sendAppendEntries(server, args, reply)
+func (rf *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.sendAppendEntries(server, args, reply)
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	if r.killed() || !ok || r.role != Leader || args.Term != r.currentTerm {
+	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
 		ok = false
-	} else if reply.Term > r.currentTerm {
-		r.increaseTermAndBecameFollower(reply.Term)
+	} else if reply.Term > rf.currentTerm {
+		rf.increaseTermAndBecameFollower(reply.Term)
 		ok = false
 	} else if reply.Success {
 		if len(args.Entries) > 0 {
-			r.matchIndex[server] = args.Entries[len(args.Entries)-1].Index
-			r.nextIndex[server] = r.matchIndex[server] + 1
+			rf.matchIndex[server] = args.Entries[len(args.Entries)-1].Index
+			rf.nextIndex[server] = rf.matchIndex[server] + 1
 		}
 	} else {
-		r.nextIndex[server] = min(reply.NextTryIndex, r.getLastLogEntry(false).Index)
+		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogEntry(false).Index)
 	}
 
 	if ok {
-		r.updateCommitIndex()
+		rf.updateCommitIndex()
 	}
 
 	return ok
@@ -494,7 +525,7 @@ func (r *Raft) countServersThatReceived(i int) int {
 	return count
 }
 
-func (r *Raft) broadcastHeartbeats() {
+func (r *Raft) broadcastHeartbeat() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -637,10 +668,10 @@ func (r *Raft) Worker() { // TODO change
 				r.persist()
 			}
 		case Leader:
-			go r.broadcastHeartbeats()
+			go r.broadcastHeartbeat()
 			time.Sleep(time.Millisecond * 60)
 		case Candidate:
-			go r.holdElection()
+			go r.startElections()
 
 			select {
 			case <-r.heartbeatReceivedCh:
