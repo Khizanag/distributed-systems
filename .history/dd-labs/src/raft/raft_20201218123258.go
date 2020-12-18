@@ -495,10 +495,9 @@ func (rf *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, re
 	} else {
 		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogEntry(false).Index)
 	}
+}
 
-	if ok {
-		rf.updateCommitIndex()
-	}
+	rf.updateCommitIndex()
 
 	return ok
 }
