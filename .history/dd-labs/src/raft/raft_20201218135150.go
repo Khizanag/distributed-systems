@@ -374,18 +374,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
-	rf.processAppendEntryRequest(args, reply)
-}
+	rf.heartbeatReceivedCh <- true
 
-func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	r.heartbeatReceivedCh <- true
-
-	if args.PrevLogIndex <= r.getLastLogEntry(false).Index {
-		if args.PrevLogTerm != r.log[args.PrevLogIndex].Term {
-			r.rejectAppendEntriesRequest(args, reply)
-		} else if args.PrevLogIndex >= 0 { // TODO -1
-			r.acceptAppendEntriesRequest(args, reply)
-		}
+	if args.PrevLogIndex > rf.getLastLogEntry(false).Index {
+		reply.NextTryIndex = rf.getLastLogEntry(false).Index + 1
+	} else if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
+		rf.rejectAppendEntriesRequest(args, reply)
+	} else if args.PrevLogIndex >= 0 { // TODO -1
+		rf.acceptAppendEntriesRequest(args, reply)
 	}
 }
 

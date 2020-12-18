@@ -380,12 +380,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	r.heartbeatReceivedCh <- true
 
-	if args.PrevLogIndex <= r.getLastLogEntry(false).Index {
-		if args.PrevLogTerm != r.log[args.PrevLogIndex].Term {
-			r.rejectAppendEntriesRequest(args, reply)
-		} else if args.PrevLogIndex >= 0 { // TODO -1
-			r.acceptAppendEntriesRequest(args, reply)
-		}
+	if args.PrevLogIndex > r.getLastLogEntry(false).Index {
+		reply.NextTryIndex = r.getLastLogEntry(false).Index + 1
+	} else if args.PrevLogTerm != r.log[args.PrevLogIndex].Term {
+		r.rejectAppendEntriesRequest(args, reply)
+	} else if args.PrevLogIndex >= 0 { // TODO -1
+		r.acceptAppendEntriesRequest(args, reply)
 	}
 }
 

@@ -367,37 +367,32 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 	defer rf.persist()
 
-	rf.tryIncreaseCurrentTerm(args.Term)
-	rf.initAppendEntriesReplyDefaults(reply)
+	reply.Success = false
 
 	if args.Term < rf.currentTerm {
+		reply.Term = rf.currentTerm
+		reply.NextTryIndex = rf.getLastLogEntry(false).Index + 1
 		return
 	}
 
-	rf.processAppendEntryRequest(args, reply)
-}
+	rf.tryIncreaseCurrentTerm(args.Term)
 
-func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	r.heartbeatReceivedCh <- true
+	rf.heartbeatReceivedCh <- true
+	reply.Term = rf.currentTerm
 
-	if args.PrevLogIndex <= r.getLastLogEntry(false).Index {
-		if args.PrevLogTerm != r.log[args.PrevLogIndex].Term {
-			r.rejectAppendEntriesRequest(args, reply)
-		} else if args.PrevLogIndex >= 0 { // TODO -1
-			r.acceptAppendEntriesRequest(args, reply)
-		}
+	if args.PrevLogIndex > rf.getLastLogEntry(false).Index {
+		reply.NextTryIndex = rf.getLastLogEntry(false).Index + 1
+	} else if args.PrevLogTerm != rf.log[args.PrevLogIndex].Term {
+		rf.rejectAppendEntriesRequest(args, reply)
+	} else if args.PrevLogIndex >= 0 { // TODO -1
+		rf.acceptAppendEntriesRequest(args, reply)
 	}
 }
 
-func (r *Raft) initAppendEntriesReplyDefaults(reply *AppendEntriesReply) {
-	reply.Success = false
-	reply.Term = r.currentTerm
-	reply.NextTryIndex = r.getLastLogEntry(false).Index + 1
-}
-
 func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	reply.Success = true
 	r.log = append(r.log[:args.PrevLogIndex+1], args.Entries...)
+
+	reply.Success = true
 	reply.NextTryIndex = args.PrevLogIndex + len(args.Entries)
 
 	if r.commitIndex < args.LeaderCommit {
@@ -406,7 +401,6 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 }
 
 func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	reply.Success = false
 	mismatchLogEntryTerm := r.log[args.PrevLogIndex].Term
 	for i := args.PrevLogIndex - 1; i >= 0; i-- {
 		if r.log[i].Term != mismatchLogEntryTerm {
