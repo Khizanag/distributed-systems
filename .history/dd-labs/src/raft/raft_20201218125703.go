@@ -205,6 +205,14 @@ func (r *Raft) shouldAcceptRequestVote(args *RequestVoteArgs) bool {
 	return r.candidateLogIsUpToDate(args) && (r.votedFor == -1 || r.votedFor == args.CandidateID)
 }
 
+func (r *Raft) tryIncreaseCurrentTerm(termToCompare int) {
+	if r.currentTerm < termToCompare {
+		r.role = Follower
+		r.currentTerm = termToCompare
+		r.votedFor = -1
+	}
+}
+
 // TODO add vote didn't granted channel
 func (r *Raft) acceptVoteRequest(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if isDebugMode {
@@ -299,6 +307,12 @@ func (r *Raft) sendRequestVoteHandler(index int, args *RequestVoteArgs) {
 			r.electedAsLeader <- true
 		}
 	}
+}
+
+func (r *Raft) increaseTermAndBecameFollower(newTerm int) {
+	r.currentTerm = newTerm
+	r.votedFor = -1
+	r.role = Follower
 }
 
 func (r *Raft) holdElection() {
@@ -606,42 +620,30 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	return r
 }
 
-func (r *Raft) Worker() {
+func (r *Raft) Worker() { // TODO change
 	for !r.killed() {
 		switch r.role {
 		case Follower:
-			r.runFollowerJob()
-		case Candidate:
-			r.runCandidateJob()
+			select {
+			case <-r.voteGrantedCh: // Do nothing
+			case <-r.heartbeatReceivedCh: // Do nothing
+			case <-time.After(r.getRandomFollowerWaitDuration()):
+				r.role = Candidate
+				r.persist()
+			}
 		case Leader:
-			r.runLeaderJob()
+			go r.broadcastHeartbeats()
+			time.Sleep(time.Millisecond * 60)
+		case Candidate:
+			go r.holdElection()
+
+			select {
+			case <-r.heartbeatReceivedCh:
+				r.role = Follower
+			case <-r.electedAsLeader: // Do nothing
+			case <-time.After(r.getRandomFollowerWaitDuration()):
+			}
 		}
-	}
-}
-
-func (r *Raft) runLeaderJob() {
-	go r.broadcastHeartbeats()
-	time.Sleep(time.Millisecond * 60)
-}
-
-func (r *Raft) runCandidateJob() {
-	go r.holdElection()
-
-	select {
-	case <-r.heartbeatReceivedCh:
-		r.role = Follower
-	case <-r.electedAsLeader: // Do nothing
-	case <-time.After(r.getRandomFollowerWaitDuration()):
-	}
-}
-
-func (r *Raft) runFollowerJob() {
-	select {
-	case <-r.voteGrantedCh: // Do nothing
-	case <-r.heartbeatReceivedCh: // Do nothing
-	case <-time.After(r.getRandomFollowerWaitDuration()):
-		r.role = Candidate
-		r.persist()
 	}
 }
 
@@ -683,18 +685,6 @@ func (r *Raft) applyLogWorker() {
 
 func (r *Raft) getRandomFollowerWaitDuration() time.Duration {
 	return time.Millisecond * time.Duration(rand.Intn(300)+200)
-}
-
-func (r *Raft) increaseTermAndBecameFollower(newTerm int) {
-	r.currentTerm = newTerm
-	r.votedFor = -1
-	r.role = Follower
-}
-
-func (r *Raft) tryIncreaseCurrentTerm(termToCompare int) {
-	if r.currentTerm < termToCompare {
-		r.increaseTermAndBecameFollower(termToCompare)
-	}
 }
 
 func min(a int, b int) int {

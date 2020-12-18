@@ -606,32 +606,24 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	return r
 }
 
-func (r *Raft) Worker() {
+func (r *Raft) Worker() { // TODO change
 	for !r.killed() {
 		switch r.role {
 		case Follower:
 			r.runFollowerJob()
-		case Candidate:
-			r.runCandidateJob()
 		case Leader:
-			r.runLeaderJob()
+			go r.broadcastHeartbeats()
+			time.Sleep(time.Millisecond * 60)
+		case Candidate:
+			go r.holdElection()
+
+			select {
+			case <-r.heartbeatReceivedCh:
+				r.role = Follower
+			case <-r.electedAsLeader: // Do nothing
+			case <-time.After(r.getRandomFollowerWaitDuration()):
+			}
 		}
-	}
-}
-
-func (r *Raft) runLeaderJob() {
-	go r.broadcastHeartbeats()
-	time.Sleep(time.Millisecond * 60)
-}
-
-func (r *Raft) runCandidateJob() {
-	go r.holdElection()
-
-	select {
-	case <-r.heartbeatReceivedCh:
-		r.role = Follower
-	case <-r.electedAsLeader: // Do nothing
-	case <-time.After(r.getRandomFollowerWaitDuration()):
 	}
 }
 
