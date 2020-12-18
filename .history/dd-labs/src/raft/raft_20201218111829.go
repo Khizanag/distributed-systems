@@ -546,8 +546,8 @@ func (r *Raft) getAppendEntriesArgs(server int) *AppendEntriesArgs {
 		Term:         r.currentTerm,
 		LeaderID:     r.me,
 		PrevLogIndex: logIndex,
-		PrevLogTerm:  r.log[logIndex].Term,
-		Entries:      r.log[r.nextIndex[server]:],
+		PrevLogTerm:  r.logs[logIndex].Term,
+		Entries:      r.logs[r.nextIndex[server]:],
 		LeaderCommit: r.commitIndex,
 	}
 }

@@ -497,7 +497,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.nextIndex[server] = min(reply.NextTryIndex, rf.getLastLogEntry(false).Index)
 	}
 
-	for N := rf.getLastLogEntry(false).Index; N > rf.commitIndex && rf.log[N].Term == rf.currentTerm; N-- {
+	baseIndex := rf.log[0].Index
+	for N := rf.getLastLogEntry(false).Index; N > rf.commitIndex && rf.log[N-baseIndex].Term == rf.currentTerm; N-- {
 		// find if there exists an N to update commitIndex
 		count := 1
 		for i := range rf.peers {
@@ -537,18 +538,6 @@ func (rf *Raft) broadcastHeartbeat() {
 
 			go rf.sendAppendEntries(server, args, &AppendEntriesReply{})
 		}
-	}
-}
-
-func (r *Raft) getAppendEntriesArgs(server int) *AppendEntriesArgs {
-	logIndex := r.nextIndex[server] - 1
-	return &AppendEntriesArgs{
-		Term:         r.currentTerm,
-		LeaderID:     r.me,
-		PrevLogIndex: logIndex,
-		PrevLogTerm:  r.log[logIndex].Term,
-		Entries:      r.log[r.nextIndex[server]:],
-		LeaderCommit: r.commitIndex,
 	}
 }
 

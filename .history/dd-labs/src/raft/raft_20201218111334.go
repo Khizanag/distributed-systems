@@ -540,18 +540,6 @@ func (rf *Raft) broadcastHeartbeat() {
 	}
 }
 
-func (r *Raft) getAppendEntriesArgs(server int) *AppendEntriesArgs {
-	logIndex := r.nextIndex[server] - 1
-	return &AppendEntriesArgs{
-		Term:         r.currentTerm,
-		LeaderID:     r.me,
-		PrevLogIndex: logIndex,
-		PrevLogTerm:  r.log[logIndex].Term,
-		Entries:      r.log[r.nextIndex[server]:],
-		LeaderCommit: r.commitIndex,
-	}
-}
-
 //
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
