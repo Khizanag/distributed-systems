@@ -368,9 +368,9 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term                  int
-	Success               bool
-	MismatchStartingIndex int
+	Term         int
+	Success      bool
+	NextTryIndex int
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -403,13 +403,13 @@ func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendE
 func (r *Raft) initAppendEntriesReplyDefaults(reply *AppendEntriesReply) {
 	reply.Success = false
 	reply.Term = r.currentTerm
-	reply.MismatchStartingIndex = r.getLastLogEntry(false).Index + 1
+	reply.NextTryIndex = r.getLastLogEntry(false).Index + 1
 }
 
 func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	reply.Success = true
 	r.log = append(r.log[:args.PrevLogIndex+1], args.Entries...)
-	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
+	reply.NextTryIndex = args.PrevLogIndex + len(args.Entries)
 
 	if r.commitIndex < args.LeaderCommit {
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
@@ -421,7 +421,7 @@ func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 	mismatchLogEntryTerm := r.log[args.PrevLogIndex].Term
 	for i := args.PrevLogIndex - 1; i >= 0; i-- {
 		if r.log[i].Term != mismatchLogEntryTerm {
-			reply.MismatchStartingIndex = i + 1
+			reply.NextTryIndex = i + 1
 			break
 		}
 	}
@@ -450,7 +450,7 @@ func (r *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, rep
 			r.nextIndex[server] = r.matchIndex[server] + 1
 		}
 	} else {
-		r.nextIndex[server] = min(reply.MismatchStartingIndex, r.getLastLogEntry(false).Index)
+		r.nextIndex[server] = min(reply.NextTryIndex, r.getLastLogEntry(false).Index)
 	}
 
 	if ok {
