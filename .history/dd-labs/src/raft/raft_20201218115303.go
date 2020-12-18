@@ -472,10 +472,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
-
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer rf.persist()
 
 	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
 		// invalid request
@@ -486,6 +484,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.currentTerm = reply.Term
 		rf.role = Follower
 		rf.votedFor = -1
+		rf.persist()
 		return ok
 	}
 
@@ -524,7 +523,7 @@ func (r *Raft) broadcastHeartbeat() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for server := range r.peers {
+	for server := range rf.peers {
 		if !r.killed() && server != r.me && r.role == Leader {
 			args := r.getAppendEntriesArgs(server)
 			reply := r.getAppendEntriesReply(server)
