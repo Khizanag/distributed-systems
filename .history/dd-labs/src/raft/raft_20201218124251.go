@@ -504,10 +504,10 @@ func (rf *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, re
 }
 
 func (r *Raft) updateCommitIndex() {
-	for curLogIndex := r.getLastLogEntry(false).Index; curLogIndex > r.commitIndex && r.log[curLogIndex].Term == r.currentTerm; curLogIndex-- {
-		if r.countServersThatReceived(curLogIndex) > r.getServersCount()/2 {
-			r.commitIndex = curLogIndex
-			break // found
+	for N := r.getLastLogEntry(false).Index; N > r.commitIndex && r.log[N].Term == r.currentTerm; N-- {
+		if r.countServersThatReceived(N) > r.getServersCount()/2 {
+			r.commitIndex = N
+			break
 		}
 	}
 }
