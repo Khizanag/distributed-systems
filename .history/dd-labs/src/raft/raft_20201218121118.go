@@ -499,6 +499,12 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
 	for N := rf.getLastLogEntry(false).Index; N > rf.commitIndex && rf.log[N].Term == rf.currentTerm; N-- {
 		// find if there exists an N to update commitIndex
+		// count := 1
+		// for i := range rf.peers {
+		// 	if i != rf.me && rf.matchIndex[i] >= N {
+		// 		count++
+		// 	}
+		// }
 		if rf.countServersThatReceived(N) > len(rf.peers)/2 {
 			rf.commitIndex = N
 			break
