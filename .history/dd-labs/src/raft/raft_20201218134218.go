@@ -404,9 +404,9 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 }
 
 func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	mismatchLogEntryTerm := r.log[args.PrevLogIndex].Term
+	term := r.log[args.PrevLogIndex].Term
 	for i := args.PrevLogIndex - 1; i >= 0; i-- {
-		if r.log[i].Term != mismatchLogEntryTerm {
+		if r.log[i].Term != term {
 			reply.NextTryIndex = i + 1
 			break
 		}

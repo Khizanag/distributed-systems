@@ -393,7 +393,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	r.log = append(r.log[:args.PrevLogIndex+1], args.Entries...)
+	r.logs = append(r.logs[:args.PrevLogIndex+1], args.Entries...)
 
 	reply.Success = true
 	reply.NextTryIndex = args.PrevLogIndex + len(args.Entries)
@@ -404,9 +404,9 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 }
 
 func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	mismatchLogEntryTerm := r.log[args.PrevLogIndex].Term
+	term := r.log[args.PrevLogIndex].Term
 	for i := args.PrevLogIndex - 1; i >= 0; i-- {
-		if r.log[i].Term != mismatchLogEntryTerm {
+		if r.log[i].Term != term {
 			reply.NextTryIndex = i + 1
 			break
 		}
