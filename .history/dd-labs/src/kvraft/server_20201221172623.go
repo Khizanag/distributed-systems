@@ -184,13 +184,13 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 }
 
 func (kv *KVServer) clearResultFor(index int) {
-	if ch, ok := kv.resultOf[index]; ok {
+	if ch, ok := kv.resultOf[applyMsg.CommandIndex]; ok {
 		select {
-		case <-ch:
+		case <-ch: // drain bad data
 		default:
 		}
 	} else {
-		kv.resultOf[index] = make(chan Op, 1)
+		kv.resultOf[applyMsg.CommandIndex] = make(chan Op, 1)
 	}
 }
 

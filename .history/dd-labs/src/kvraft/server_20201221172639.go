@@ -186,7 +186,7 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 func (kv *KVServer) clearResultFor(index int) {
 	if ch, ok := kv.resultOf[index]; ok {
 		select {
-		case <-ch:
+		case <-ch: // drain bad data
 		default:
 		}
 	} else {

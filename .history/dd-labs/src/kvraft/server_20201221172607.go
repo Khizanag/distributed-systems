@@ -183,17 +183,6 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 	kv.resultOf[applyMsg.CommandIndex] <- result
 }
 
-func (kv *KVServer) clearResultFor(index int) {
-	if ch, ok := kv.resultOf[index]; ok {
-		select {
-		case <-ch:
-		default:
-		}
-	} else {
-		kv.resultOf[index] = make(chan Op, 1)
-	}
-}
-
 //
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
