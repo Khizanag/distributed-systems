@@ -53,6 +53,14 @@ func (ck *Clerk) Get(key string) string {
 		RequestID: ck.getNextRequestID(),
 	}
 
+	// for ; ; ck.leader = (ck.leader + 1) % len(ck.servers) {
+	// 	server := ck.servers[ck.leader]
+	// 	reply := GetReply{}
+	// 	ok := server.Call("KVServer.Get", &args, &reply)
+	// 	if ok && reply.Err != ErrWrongLeader {
+	// 		return reply.Value
+	// 	}
+	// }
 	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
 		reply := GetReply{}
 		ok := ck.servers[leader].Call("KVServer.Get", &args, &reply)

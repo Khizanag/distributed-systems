@@ -14,7 +14,7 @@ type Clerk struct {
 	mu            sync.Mutex
 	ID            int64
 	nextRequestID int64
-	prevLeader    int
+	leader        int
 }
 
 func nrand() int64 {
@@ -30,7 +30,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	// You'll have to add code here.
 	ck.ID = nrand()
 	ck.nextRequestID = 0
-	ck.prevLeader = 0
+	ck.leader = 0
 	return ck
 }
 
@@ -53,6 +53,14 @@ func (ck *Clerk) Get(key string) string {
 		RequestID: ck.getNextRequestID(),
 	}
 
+	// for ; ; ck.leader = (ck.leader + 1) % len(ck.servers) {
+	// 	server := ck.servers[ck.leader]
+	// 	reply := GetReply{}
+	// 	ok := server.Call("KVServer.Get", &args, &reply)
+	// 	if ok && reply.Err != ErrWrongLeader {
+	// 		return reply.Value
+	// 	}
+	// }
 	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
 		reply := GetReply{}
 		ok := ck.servers[leader].Call("KVServer.Get", &args, &reply)
@@ -61,6 +69,14 @@ func (ck *Clerk) Get(key string) string {
 			return reply.Value
 		}
 	}
+}
+
+func (ck *Clerk) getNextRequestID() int64 {
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
+
+	ck.nextRequestID++
+	return ck.nextRequestID
 }
 
 //
@@ -83,11 +99,11 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		RequestID: ck.getNextRequestID(),
 	}
 
-	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
+	for ; ; ck.leader = (ck.leader + 1) % len(ck.servers) {
+		server := ck.servers[ck.leader]
 		reply := PutAppendReply{}
-		ok := ck.servers[leader].Call("KVServer.PutAppend", &args, &reply)
+		ok := server.Call("KVServer.PutAppend", &args, &reply)
 		if ok && reply.Err != ErrWrongLeader {
-			ck.updatePrevLeaderTo(leader)
 			return
 		}
 	}
@@ -98,38 +114,4 @@ func (ck *Clerk) Put(key string, value string) {
 }
 func (ck *Clerk) Append(key string, value string) {
 	ck.PutAppend(key, value, "append")
-}
-
-// ################################# Helper Functions ###########################
-func (ck *Clerk) getNextRequestID() int64 {
-	ck.mu.Lock()
-	defer ck.mu.Unlock()
-
-	ck.nextRequestID++
-	return ck.nextRequestID
-}
-
-func (ck *Clerk) updatePrevLeaderTo(prevLeader int) {
-	ck.mu.Lock()
-	defer ck.mu.Unlock()
-
-	ck.prevLeader = prevLeader
-}
-
-func (ck *Clerk) getPreviousLeader() int {
-	ck.mu.Lock()
-	defer ck.mu.Unlock()
-
-	return ck.prevLeader
-}
-
-func (ck *Clerk) getNextLeader() int {
-	ck.mu.Lock()
-	defer ck.mu.Unlock()
-
-	return (ck.prevLeader + 1) % ck.getServersCount()
-}
-
-func (ck *Clerk) getServersCount() int {
-	return len(ck.servers)
 }

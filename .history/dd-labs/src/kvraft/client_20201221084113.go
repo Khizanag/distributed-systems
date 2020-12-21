@@ -53,6 +53,14 @@ func (ck *Clerk) Get(key string) string {
 		RequestID: ck.getNextRequestID(),
 	}
 
+	// for ; ; ck.leader = (ck.leader + 1) % len(ck.servers) {
+	// 	server := ck.servers[ck.leader]
+	// 	reply := GetReply{}
+	// 	ok := server.Call("KVServer.Get", &args, &reply)
+	// 	if ok && reply.Err != ErrWrongLeader {
+	// 		return reply.Value
+	// 	}
+	// }
 	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
 		reply := GetReply{}
 		ok := ck.servers[leader].Call("KVServer.Get", &args, &reply)
@@ -63,44 +71,6 @@ func (ck *Clerk) Get(key string) string {
 	}
 }
 
-//
-// shared by Put and Append.
-//
-// you can send an RPC with code like this:
-// ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
-//
-// the types of args and reply (including whether they are pointers)
-// must match the declared types of the RPC handler function's
-// arguments. and reply must be passed as a pointer.
-//
-func (ck *Clerk) PutAppend(key string, value string, op string) {
-	// You will have to modify this function.
-	args := PutAppendArgs{
-		Key:       key,
-		Value:     value,
-		Command:   op,
-		ClientID:  ck.ID,
-		RequestID: ck.getNextRequestID(),
-	}
-
-	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
-		reply := PutAppendReply{}
-		ok := ck.servers[leader].Call("KVServer.PutAppend", &args, &reply)
-		if ok && reply.Err != ErrWrongLeader {
-			ck.updatePrevLeaderTo(leader)
-			return
-		}
-	}
-}
-
-func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "put")
-}
-func (ck *Clerk) Append(key string, value string) {
-	ck.PutAppend(key, value, "append")
-}
-
-// ################################# Helper Functions ###########################
 func (ck *Clerk) getNextRequestID() int64 {
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
@@ -132,4 +102,41 @@ func (ck *Clerk) getNextLeader() int {
 
 func (ck *Clerk) getServersCount() int {
 	return len(ck.servers)
+}
+
+//
+// shared by Put and Append.
+//
+// you can send an RPC with code like this:
+// ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+//
+// the types of args and reply (including whether they are pointers)
+// must match the declared types of the RPC handler function's
+// arguments. and reply must be passed as a pointer.
+//
+func (ck *Clerk) PutAppend(key string, value string, op string) {
+	// You will have to modify this function.
+	args := PutAppendArgs{
+		Key:       key,
+		Value:     value,
+		Command:   op,
+		ClientID:  ck.ID,
+		RequestID: ck.getNextRequestID(),
+	}
+
+	for ; ; ck.prevLeader = (ck.prevLeader + 1) % len(ck.servers) {
+		server := ck.servers[ck.prevLeader]
+		reply := PutAppendReply{}
+		ok := server.Call("KVServer.PutAppend", &args, &reply)
+		if ok && reply.Err != ErrWrongLeader {
+			return
+		}
+	}
+}
+
+func (ck *Clerk) Put(key string, value string) {
+	ck.PutAppend(key, value, "put")
+}
+func (ck *Clerk) Append(key string, value string) {
+	ck.PutAppend(key, value, "append")
 }
