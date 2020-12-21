@@ -169,7 +169,7 @@ func (kv *KVServer) Kill() {
 	// Your code here, if desired.
 }
 
-func (kv *KVServer) worker() {
+func (kv *KVServer) Run() {
 	for {
 		msg := <-kv.applyCh
 		kv.mu.Lock()

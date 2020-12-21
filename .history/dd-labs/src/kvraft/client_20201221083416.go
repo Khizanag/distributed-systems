@@ -47,11 +47,14 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
-	args := GetArgs{
-		Key:       key,
-		ClientID:  ck.ID,
-		RequestID: ck.getNextRequestID(),
-	}
+	// You will have to modify this function.
+	args := GetArgs{}
+	args.Key = key
+	args.ClientID = ck.clientID
+	ck.mu.Lock()
+	args.RequestID = ck.requestID
+	ck.requestID++
+	ck.mu.Unlock()
 
 	for ; ; ck.leader = (ck.leader + 1) % len(ck.servers) {
 		server := ck.servers[ck.leader]
@@ -83,6 +86,15 @@ func (ck *Clerk) getNextRequestID() int64 {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	// args := PutAppendArgs{}
+	// args.Key = key
+	// args.Value = value
+	// args.Command = op
+	// args.ClientID = ck.clientID
+	// ck.mu.Lock()
+	// args.RequestID = ck.requestID
+	// ck.requestID++
+	// ck.mu.Unlock()
 	args := PutAppendArgs{
 		Key:       key,
 		Value:     value,

@@ -10,10 +10,7 @@ import (
 	"../raft"
 )
 
-const (
-	defaultChannelSize = 100
-	Debug              = 0
-)
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -136,28 +133,28 @@ func (kv *KVServer) applyOp(op Op) Result {
 	switch op.FuncName {
 	case "put":
 		if !kv.isDuplicated(op) {
-			kv.DB[op.Key] = op.Value
+			kv.data[op.Key] = op.Value
 		}
 		result.Err = OK
 	case "append":
 		if !kv.isDuplicated(op) {
-			kv.DB[op.Key] += op.Value
+			kv.data[op.Key] += op.Value
 		}
 		result.Err = OK
 	case "get":
-		if value, ok := kv.DB[op.Key]; ok {
+		if value, ok := kv.data[op.Key]; ok {
 			result.Err = OK
 			result.Value = value
 		} else {
 			result.Err = ErrNoKey
 		}
 	}
-	kv.lastRequestIDOf[op.ClientID] = op.RequestID
+	kv.ack[op.ClientID] = op.RequestID
 	return result
 }
 
 func (kv *KVServer) isDuplicated(op Op) bool {
-	lastRequestID, ok := kv.lastRequestIDOf[op.ClientID]
+	lastRequestID, ok := kv.ack[op.ClientID]
 	if ok {
 		return lastRequestID >= op.RequestID
 	}
@@ -169,61 +166,45 @@ func (kv *KVServer) Kill() {
 	// Your code here, if desired.
 }
 
-func (kv *KVServer) worker() {
+func (kv *KVServer) Run() {
 	for {
 		msg := <-kv.applyCh
 		kv.mu.Lock()
 
 		op := msg.Command.(Op)
 		result := kv.applyOp(op)
-		if ch, ok := kv.resultOf[msg.CommandIndex]; ok {
+		if ch, ok := kv.resultCh[msg.CommandIndex]; ok {
 			select {
 			case <-ch: // drain bad data
 			default:
 			}
 		} else {
-			kv.resultOf[msg.CommandIndex] = make(chan Result, 1)
+			kv.resultCh[msg.CommandIndex] = make(chan Result, 1)
 		}
-		kv.resultOf[msg.CommandIndex] <- result
+		kv.resultCh[msg.CommandIndex] <- result
 		kv.mu.Unlock()
 	}
 }
 
-//
-// servers[] contains the ports of the set of
-// servers that will cooperate via Raft to
-// form the fault-tolerant key/value service.
-// me is the index of the current server in servers[].
-// the k/v server should store snapshots through the underlying Raft
-// implementation, which should call persister.SaveStateAndSnapshot() to
-// atomically save the Raft state along with the snapshot.
-// the k/v server should snapshot when Raft's saved state exceeds maxraftstate bytes,
-// in order to allow Raft to garbage-collect its log. if maxraftstate is -1,
-// you don't need to snapshot.
-// StartKVServer() must return quickly, so it should start goroutines
-// for any long-running work.
-//
 func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *KVServer {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
 	labgob.Register(Op{})
+	labgob.Register(Result{})
 
 	kv := new(KVServer)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
 
 	// You may need initialization code here.
-
-	kv.applyCh = make(chan raft.ApplyMsg, defaultChannelSize)
+	kv.applyCh = make(chan raft.ApplyMsg, 100)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
-	kv.DB = make(map[string]string)
-	kv.resultOf = make(map[int]chan Result)
-	kv.lastRequestIDOf = make(map[int64]int64)
-	kv.killCh = make(chan bool, defaultChannelSize)
+	kv.data = make(map[string]string)
+	kv.ack = make(map[int64]int64)
+	kv.resultCh = make(map[int]chan Result)
 
-	go kv.worker()
-
+	go kv.Run()
 	return kv
 }

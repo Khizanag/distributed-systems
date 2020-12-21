@@ -10,10 +10,7 @@ import (
 	"../raft"
 )
 
-const (
-	defaultChannelSize = 100
-	Debug              = 0
-)
+const Debug = 1
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug > 0 {
@@ -169,7 +166,7 @@ func (kv *KVServer) Kill() {
 	// Your code here, if desired.
 }
 
-func (kv *KVServer) worker() {
+func (kv *KVServer) Run() {
 	for {
 		msg := <-kv.applyCh
 		kv.mu.Lock()
