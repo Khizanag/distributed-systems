@@ -101,15 +101,6 @@ func (kv *KVServer) processRequest(entry Op) Op {
 	return resultToReturn
 }
 
-func (kv *KVServer) initForData(index int) {
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-
-	if _, ok := kv.resultOf[index]; !ok {
-		kv.resultOf[index] = make(chan Op, 1)
-	}
-}
-
 func (kv *KVServer) processAppendGetPutRequest(op Op) Op {
 	switch op.FuncName {
 	case "Append":

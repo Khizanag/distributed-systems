@@ -51,6 +51,15 @@ type KVServer struct {
 	killCh          chan bool
 }
 
+func (kv *KVServer) initForData(index int) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	if _, ok := kv.resultOf[index]; !ok {
+		kv.resultOf[index] = make(chan Op, 1)
+	}
+}
+
 func (op *Op) isEqual(other *Op) bool {
 	return op.ClientID == other.ClientID &&
 		op.RequestID == other.RequestID
@@ -99,15 +108,6 @@ func (kv *KVServer) processRequest(entry Op) Op {
 		}
 	}
 	return resultToReturn
-}
-
-func (kv *KVServer) initForData(index int) {
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-
-	if _, ok := kv.resultOf[index]; !ok {
-		kv.resultOf[index] = make(chan Op, 1)
-	}
 }
 
 func (kv *KVServer) processAppendGetPutRequest(op Op) Op {

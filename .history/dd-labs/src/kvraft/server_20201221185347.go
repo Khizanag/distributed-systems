@@ -51,12 +51,22 @@ type KVServer struct {
 	killCh          chan bool
 }
 
-func (op *Op) isEqual(other *Op) bool {
-	return op.ClientID == other.ClientID &&
-		op.RequestID == other.RequestID
+func (kv *KVServer) initForData(index int) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	if _, ok := kv.resultOf[index]; !ok {
+		kv.resultOf[index] = make(chan Op, 1)
+	}
+}
+
+func (this *Op) isEqual(other *Op) bool {
+	return this.ClientID == other.ClientID &&
+		this.RequestID == other.RequestID
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
+	// Your code here.
 	entry := Op{
 		Key:       args.Key,
 		FuncName:  "Get",
@@ -101,16 +111,7 @@ func (kv *KVServer) processRequest(entry Op) Op {
 	return resultToReturn
 }
 
-func (kv *KVServer) initForData(index int) {
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
-
-	if _, ok := kv.resultOf[index]; !ok {
-		kv.resultOf[index] = make(chan Op, 1)
-	}
-}
-
-func (kv *KVServer) processAppendGetPutRequest(op Op) Op {
+func (kv *KVServer) applyOp(op Op) Op {
 	switch op.FuncName {
 	case "Append":
 		kv.processAppendRequest(&op)
@@ -124,7 +125,7 @@ func (kv *KVServer) processAppendGetPutRequest(op Op) Op {
 }
 
 func (kv *KVServer) processAppendRequest(op *Op) {
-	if kv.isOriginalRequest(op) {
+	if !kv.isDuplicated(op) {
 		kv.DB[op.Key] += op.Value
 	}
 	op.Err = OK
@@ -140,15 +141,18 @@ func (kv *KVServer) processGetRequest(op *Op) {
 }
 
 func (kv *KVServer) processPutRequest(op *Op) {
-	if kv.isOriginalRequest(op) {
+	if !kv.isDuplicated(op) {
 		kv.DB[op.Key] = op.Value
 	}
 	op.Err = OK
 }
 
-func (kv *KVServer) isOriginalRequest(op *Op) bool {
+func (kv *KVServer) isDuplicated(op *Op) bool {
 	lastRequestID, ok := kv.lastRequestIDOf[op.ClientID]
-	return ok == false || lastRequestID < op.RequestID
+	if ok {
+		return lastRequestID >= op.RequestID
+	}
+	return false
 }
 
 //
@@ -173,21 +177,32 @@ func (kv *KVServer) killed() bool {
 	return z == 1
 }
 
+func (kv *KVServer) worker() {
+	for {
+		select {
+		case applyMsg := <-kv.applyCh:
+			kv.processApplyMessage(applyMsg)
+		case <-kv.killCh:
+			break
+		}
+	}
+}
+
 func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
 	op := applyMsg.Command.(Op)
-	result := kv.processAppendGetPutRequest(op)
+	result := kv.applyOp(op)
 	kv.clearResultFor(applyMsg.CommandIndex)
 	kv.resultOf[applyMsg.CommandIndex] <- result
 }
 
 func (kv *KVServer) clearResultFor(index int) {
-	if channel, ok := kv.resultOf[index]; ok {
+	if ch, ok := kv.resultOf[index]; ok {
 		select {
-		case <-channel:
-		default: // was empty
+		case <-ch:
+		default:
 		}
 	} else {
 		kv.resultOf[index] = make(chan Op, 1)
@@ -231,17 +246,6 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	go kv.worker()
 
 	return kv
-}
-
-func (kv *KVServer) worker() {
-	for {
-		select {
-		case applyMsg := <-kv.applyCh:
-			kv.processApplyMessage(applyMsg)
-		case <-kv.killCh:
-			break
-		}
-	}
 }
 
 func (kv *KVServer) getErrorOp() Op {
