@@ -51,13 +51,13 @@ func (ck *Clerk) Get(key string) string {
 		RequestID: ck.getNextRequestID(),
 	}
 
-	for {
+	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
 		reply := GetReply{}
-		ok := ck.servers[ck.prevLeader].Call("KVServer.Get", &args, &reply)
+		ok := ck.servers[leader].Call("KVServer.Get", &args, &reply)
 		if ok && reply.Err != ErrWrongLeader {
+			ck.prevLeader = leader
 			return reply.Value
 		}
-		ck.updateLeader()
 	}
 }
 
@@ -81,14 +81,13 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		RequestID: ck.getNextRequestID(),
 	}
 
-	for {
+	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
 		reply := PutAppendReply{}
-		ok := ck.servers[ck.prevLeader].Call("KVServer.PutAppend", &args, &reply)
+		ok := ck.servers[leader].Call("KVServer.PutAppend", &args, &reply)
 		if ok && reply.Err != ErrWrongLeader {
+			ck.prevLeader = leader
 			return
 		}
-
-		ck.updateLeader()
 	}
 }
 
@@ -111,7 +110,4 @@ func (ck *Clerk) getNextLeader() int {
 
 func (ck *Clerk) getServersCount() int {
 	return len(ck.servers)
-}
-func (ck *Clerk) updateLeader() {
-	ck.prevLeader = ck.getNextLeader()
 }

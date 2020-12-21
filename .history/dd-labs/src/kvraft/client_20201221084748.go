@@ -10,6 +10,7 @@ import (
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
+	// mu            sync.Mutex
 	ID            int64
 	nextRequestID int64
 	prevLeader    int
@@ -51,13 +52,13 @@ func (ck *Clerk) Get(key string) string {
 		RequestID: ck.getNextRequestID(),
 	}
 
-	for {
+	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
 		reply := GetReply{}
-		ok := ck.servers[ck.prevLeader].Call("KVServer.Get", &args, &reply)
+		ok := ck.servers[leader].Call("KVServer.Get", &args, &reply)
 		if ok && reply.Err != ErrWrongLeader {
+			ck.updatePrevLeaderTo(leader)
 			return reply.Value
 		}
-		ck.updateLeader()
 	}
 }
 
@@ -81,14 +82,13 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		RequestID: ck.getNextRequestID(),
 	}
 
-	for {
+	for leader := ck.getPreviousLeader(); ; leader = (leader + 1) % ck.getServersCount() {
 		reply := PutAppendReply{}
-		ok := ck.servers[ck.prevLeader].Call("KVServer.PutAppend", &args, &reply)
+		ok := ck.servers[leader].Call("KVServer.PutAppend", &args, &reply)
 		if ok && reply.Err != ErrWrongLeader {
+			ck.updatePrevLeaderTo(leader)
 			return
 		}
-
-		ck.updateLeader()
 	}
 }
 
@@ -101,17 +101,34 @@ func (ck *Clerk) Append(key string, value string) {
 
 // ################################# Helper Functions ###########################
 func (ck *Clerk) getNextRequestID() int64 {
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
+
 	ck.nextRequestID++
 	return ck.nextRequestID
 }
 
+func (ck *Clerk) updatePrevLeaderTo(prevLeader int) {
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
+
+	ck.prevLeader = prevLeader
+}
+
+func (ck *Clerk) getPreviousLeader() int {
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
+
+	return ck.prevLeader
+}
+
 func (ck *Clerk) getNextLeader() int {
+	// ck.mu.Lock()
+	// defer ck.mu.Unlock()
+
 	return (ck.prevLeader + 1) % ck.getServersCount()
 }
 
 func (ck *Clerk) getServersCount() int {
 	return len(ck.servers)
-}
-func (ck *Clerk) updateLeader() {
-	ck.prevLeader = ck.getNextLeader()
 }

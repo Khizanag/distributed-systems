@@ -51,13 +51,13 @@ func (ck *Clerk) Get(key string) string {
 		RequestID: ck.getNextRequestID(),
 	}
 
-	for {
+	for leader := ck.prevLeader; ; leader = ck.getNextLeader() {
 		reply := GetReply{}
-		ok := ck.servers[ck.prevLeader].Call("KVServer.Get", &args, &reply)
+		ok := ck.servers[leader].Call("KVServer.Get", &args, &reply)
 		if ok && reply.Err != ErrWrongLeader {
+			ck.prevLeader = leader
 			return reply.Value
 		}
-		ck.updateLeader()
 	}
 }
 

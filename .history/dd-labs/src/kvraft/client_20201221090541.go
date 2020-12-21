@@ -53,8 +53,9 @@ func (ck *Clerk) Get(key string) string {
 
 	for {
 		reply := GetReply{}
-		ok := ck.servers[ck.prevLeader].Call("KVServer.Get", &args, &reply)
+		ok := ck.servers[leader].Call("KVServer.Get", &args, &reply)
 		if ok && reply.Err != ErrWrongLeader {
+			ck.prevLeader = leader
 			return reply.Value
 		}
 		ck.updateLeader()
