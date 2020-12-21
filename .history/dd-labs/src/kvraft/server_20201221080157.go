@@ -146,14 +146,14 @@ func (kv *KVServer) applyOp(op Op) Result {
 			result.Err = ErrNoKey
 		}
 	}
-	kv.ack[op.ClientID] = op.RequestID
+	kv.ack[op.ClientId] = op.RequestId
 	return result
 }
 
 func (kv *KVServer) isDuplicated(op Op) bool {
-	lastRequestID, ok := kv.ack[op.ClientID]
+	lastRequestId, ok := kv.ack[op.ClientId]
 	if ok {
-		return lastRequestID >= op.RequestID
+		return lastRequestId >= op.RequestId
 	}
 	return false
 }

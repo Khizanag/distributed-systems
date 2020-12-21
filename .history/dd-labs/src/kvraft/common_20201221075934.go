@@ -21,7 +21,8 @@ type PutAppendArgs struct {
 }
 
 type PutAppendReply struct {
-	Err Err
+	WrongLeader bool
+	Err         Err
 }
 
 type GetArgs struct {

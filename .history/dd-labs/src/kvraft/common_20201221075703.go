@@ -1,9 +1,8 @@
 package kvraft
 
 const (
-	OK             = "OK"
-	ErrNoKey       = "ErrNoKey"
-	ErrWrongLeader = "ErrWrongLeader"
+	OK       = "OK"
+	ErrNoKey = "ErrNoKey"
 )
 
 type Err string
@@ -21,14 +20,15 @@ type PutAppendArgs struct {
 }
 
 type PutAppendReply struct {
-	Err Err
+	WrongLeader bool
+	Err         Err
 }
 
 type GetArgs struct {
 	Key string
 	// You'll have to add definitions here.
-	ClientID  int64
-	RequestID int64
+	ClientId  int64
+	RequestId int64
 }
 
 type GetReply struct {

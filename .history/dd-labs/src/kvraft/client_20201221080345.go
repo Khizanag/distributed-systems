@@ -92,7 +92,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		server := ck.servers[ck.leader]
 		reply := PutAppendReply{}
 		ok := server.Call("KVServer.PutAppend", &args, &reply)
-		if ok && reply.Err != ErrWrongLeader {
+		if ok && !reply.WrongLeader {
 			return
 		}
 	}

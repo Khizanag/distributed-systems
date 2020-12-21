@@ -96,7 +96,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		reply.Err = ErrWrongLeader
 		return
 	}
-
+	reply.WrongLeader = false
 	reply.Err = result.Err
 	reply.Value = result.Value
 }
@@ -105,18 +105,18 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	entry := Op{
 		Command:   args.Command,
-		ClientID:  args.ClientID,
-		RequestID: args.RequestID,
+		ClientId:  args.ClientId,
+		RequestId: args.RequestId,
 		Key:       args.Key,
 		Value:     args.Value,
 	}
 
 	result := kv.appendEntryToLog(entry)
 	if !result.OK {
-		reply.Err = ErrWrongLeader
+		reply.WrongLeader = true
 		return
 	}
-
+	reply.WrongLeader = false
 	reply.Err = result.Err
 }
 
@@ -124,8 +124,9 @@ func (kv *KVServer) applyOp(op Op) Result {
 	result := Result{}
 	result.Command = op.Command
 	result.OK = true
-	result.ClientID = op.ClientID
-	result.RequestID = op.RequestID
+	result.WrongLeader = false
+	result.ClientId = op.ClientId
+	result.RequestId = op.RequestId
 
 	switch op.Command {
 	case "put":
@@ -146,14 +147,14 @@ func (kv *KVServer) applyOp(op Op) Result {
 			result.Err = ErrNoKey
 		}
 	}
-	kv.ack[op.ClientID] = op.RequestID
+	kv.ack[op.ClientId] = op.RequestId
 	return result
 }
 
 func (kv *KVServer) isDuplicated(op Op) bool {
-	lastRequestID, ok := kv.ack[op.ClientID]
+	lastRequestId, ok := kv.ack[op.ClientId]
 	if ok {
-		return lastRequestID >= op.RequestID
+		return lastRequestId >= op.RequestId
 	}
 	return false
 }
