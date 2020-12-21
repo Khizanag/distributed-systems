@@ -77,6 +77,9 @@ func (kv *KVServer) initForData(index int) {
 	}
 }
 
+//
+// check if the result corresponds to the log entry.
+//
 func isMatch(entry Op, result Op) bool {
 	return entry.ClientID == result.ClientID && entry.RequestID == result.RequestID
 }

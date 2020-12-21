@@ -62,7 +62,9 @@ func (kv *KVServer) appendEntryToLog(entry Op) Op {
 			if isMatch(entry, result) {
 				resultToReturn = result
 			}
+			return kv.getErrorOp()
 		case <-time.After(240 * time.Millisecond):
+			return kv.getErrorOp()
 		}
 	}
 	return resultToReturn
@@ -77,6 +79,9 @@ func (kv *KVServer) initForData(index int) {
 	}
 }
 
+//
+// check if the result corresponds to the log entry.
+//
 func isMatch(entry Op, result Op) bool {
 	return entry.ClientID == result.ClientID && entry.RequestID == result.RequestID
 }

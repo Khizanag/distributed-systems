@@ -52,7 +52,7 @@ type KVServer struct {
 func (kv *KVServer) appendEntryToLog(entry Op) Op {
 	index, _, isLeader := kv.rf.Start(entry)
 
-	resultToReturn := kv.getErrorOp()
+	result := getErrorOp()
 
 	if isLeader {
 		kv.initForData(index)
@@ -60,12 +60,13 @@ func (kv *KVServer) appendEntryToLog(entry Op) Op {
 		select {
 		case result := <-kv.resultOf[index]:
 			if isMatch(entry, result) {
-				resultToReturn = result
+				return result
 			}
+			return kv.getErrorOp()
 		case <-time.After(240 * time.Millisecond):
+			return kv.getErrorOp()
 		}
 	}
-	return resultToReturn
 }
 
 func (kv *KVServer) initForData(index int) {
@@ -77,6 +78,9 @@ func (kv *KVServer) initForData(index int) {
 	}
 }
 
+//
+// check if the result corresponds to the log entry.
+//
 func isMatch(entry Op, result Op) bool {
 	return entry.ClientID == result.ClientID && entry.RequestID == result.RequestID
 }
