@@ -33,6 +33,16 @@ type Op struct {
 	RequestID int64
 	Err       Err
 }
+
+type Result struct {
+	Command   string
+	OK        bool
+	ClientID  int64
+	RequestID int64
+	Err       Err
+	Value     string
+}
+
 type KVServer struct {
 	mu      sync.Mutex
 	me      int
@@ -89,6 +99,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 
 	result := kv.appendEntryToLog(entry)
+	// if !result.OK {
+	// 	reply.Err = ErrWrongLeader
+	// 	return
+	// }
+
 	reply.Err = result.Err
 	reply.Value = result.Value
 }
@@ -104,6 +119,11 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 
 	result := kv.appendEntryToLog(entry)
+	// if !result.OK {
+	// 	reply.Err = ErrWrongLeader
+	// 	return
+	// }
+
 	reply.Err = result.Err
 }
 

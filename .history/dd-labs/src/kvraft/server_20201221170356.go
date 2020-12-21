@@ -89,6 +89,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 
 	result := kv.appendEntryToLog(entry)
+	// if !result.OK {
+	// 	reply.Err = ErrWrongLeader
+	// 	return
+	// }
+
 	reply.Err = result.Err
 	reply.Value = result.Value
 }

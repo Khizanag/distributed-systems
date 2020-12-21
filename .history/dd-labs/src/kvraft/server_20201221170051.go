@@ -33,6 +33,16 @@ type Op struct {
 	RequestID int64
 	Err       Err
 }
+
+type Result struct {
+	Command   string
+	OK        bool
+	ClientID  int64
+	RequestID int64
+	Err       Err
+	Value     string
+}
+
 type KVServer struct {
 	mu      sync.Mutex
 	me      int
@@ -44,7 +54,7 @@ type KVServer struct {
 
 	// Your definitions here.
 	DB              map[string]string
-	resultOf        map[int]chan Op
+	resultOf        map[int]chan Result
 	lastRequestIDOf map[int64]int64
 	killCh          chan bool
 }
@@ -66,16 +76,16 @@ func (kv *KVServer) appendEntryToLog(entry Op) Op {
 		if isMatch(entry, result) {
 			return result
 		}
-		return Op{Err: ErrWrongLeader}
+		return Result{OK: false}
 	case <-time.After(240 * time.Millisecond):
-		return Op{Err: ErrWrongLeader}
+		return Result{OK: false}
 	}
 }
 
 //
 // check if the result corresponds to the log entry.
 //
-func isMatch(entry Op, result Op) bool {
+func isMatch(entry Op, result Result) bool {
 	return entry.ClientID == result.ClientID && entry.RequestID == result.RequestID
 }
 
@@ -89,6 +99,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 
 	result := kv.appendEntryToLog(entry)
+	if !result.OK {
+		reply.Err = ErrWrongLeader
+		return
+	}
+
 	reply.Err = result.Err
 	reply.Value = result.Value
 }
@@ -104,6 +119,11 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 
 	result := kv.appendEntryToLog(entry)
+	if !result.OK {
+		reply.Err = ErrWrongLeader
+		return
+	}
+
 	reply.Err = result.Err
 }
 
@@ -165,7 +185,7 @@ func (kv *KVServer) worker() {
 			default:
 			}
 		} else {
-			kv.resultOf[msg.CommandIndex] = make(chan Op, 1)
+			kv.resultOf[msg.CommandIndex] = make(chan Result, 1)
 		}
 		kv.resultOf[msg.CommandIndex] <- result
 		kv.mu.Unlock()
@@ -202,7 +222,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	// You may need initialization code here.
 	kv.DB = make(map[string]string)
-	kv.resultOf = make(map[int]chan Op)
+	kv.resultOf = make(map[int]chan Result)
 	kv.lastRequestIDOf = make(map[int64]int64)
 	kv.killCh = make(chan bool, defaultChannelSize)
 

@@ -33,6 +33,16 @@ type Op struct {
 	RequestID int64
 	Err       Err
 }
+
+type Result struct {
+	Command   string
+	OK        bool
+	ClientID  int64
+	RequestID int64
+	Err       Err
+	Value     string
+}
+
 type KVServer struct {
 	mu      sync.Mutex
 	me      int
@@ -44,20 +54,20 @@ type KVServer struct {
 
 	// Your definitions here.
 	DB              map[string]string
-	resultOf        map[int]chan Op
+	resultOf        map[int]chan Result
 	lastRequestIDOf map[int64]int64
 	killCh          chan bool
 }
 
-func (kv *KVServer) appendEntryToLog(entry Op) Op {
+func (kv *KVServer) appendEntryToLog(entry Op) Result {
 	index, _, isLeader := kv.rf.Start(entry)
 	if !isLeader {
-		return Op{Err: ErrWrongLeader}
+		return Result{OK: false}
 	}
 
 	kv.mu.Lock()
 	if _, ok := kv.resultOf[index]; !ok {
-		kv.resultOf[index] = make(chan Op, 1)
+		kv.resultOf[index] = make(chan Result, 1)
 	}
 	kv.mu.Unlock()
 
@@ -66,29 +76,33 @@ func (kv *KVServer) appendEntryToLog(entry Op) Op {
 		if isMatch(entry, result) {
 			return result
 		}
-		return Op{Err: ErrWrongLeader}
+		return Result{OK: false}
 	case <-time.After(240 * time.Millisecond):
-		return Op{Err: ErrWrongLeader}
+		return Result{OK: false}
 	}
 }
 
 //
 // check if the result corresponds to the log entry.
 //
-func isMatch(entry Op, result Op) bool {
+func isMatch(entry Op, result Result) bool {
 	return entry.ClientID == result.ClientID && entry.RequestID == result.RequestID
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
-	entry := Op{
-		Key:       args.Key,
-		FuncName:  "Get",
-		ClientID:  args.ClientID,
-		RequestID: args.RequestID,
-	}
+	entry := Op{}
+	entry.FuncName = "Get"
+	entry.ClientID = args.ClientID
+	entry.RequestID = args.RequestID
+	entry.Key = args.Key
 
 	result := kv.appendEntryToLog(entry)
+	if !result.OK {
+		reply.Err = ErrWrongLeader
+		return
+	}
+
 	reply.Err = result.Err
 	reply.Value = result.Value
 }
@@ -96,25 +110,28 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	entry := Op{
-		Key:       args.Key,
-		Value:     args.Value,
 		FuncName:  args.Command,
 		ClientID:  args.ClientID,
 		RequestID: args.RequestID,
+		Key:       args.Key,
+		Value:     args.Value,
 	}
 
 	result := kv.appendEntryToLog(entry)
+	if !result.OK {
+		reply.Err = ErrWrongLeader
+		return
+	}
+
 	reply.Err = result.Err
 }
 
-func (kv *KVServer) applyOp(op Op) Op {
-	result := Op{
-		FuncName:  op.FuncName,
-		Key:       op.Key,
-		ClientID:  op.ClientID,
-		RequestID: op.RequestID,
-		Err:       OK,
-	}
+func (kv *KVServer) applyOp(op Op) Result {
+	result := Result{}
+	result.Command = op.FuncName
+	result.OK = true
+	result.ClientID = op.ClientID
+	result.RequestID = op.RequestID
 
 	switch op.FuncName {
 	case "Put":
@@ -127,7 +144,7 @@ func (kv *KVServer) applyOp(op Op) Op {
 			kv.DB[op.Key] += op.Value
 		}
 		result.Err = OK
-	case "Get":
+	case "get":
 		if value, ok := kv.DB[op.Key]; ok {
 			result.Err = OK
 			result.Value = value
@@ -165,7 +182,7 @@ func (kv *KVServer) worker() {
 			default:
 			}
 		} else {
-			kv.resultOf[msg.CommandIndex] = make(chan Op, 1)
+			kv.resultOf[msg.CommandIndex] = make(chan Result, 1)
 		}
 		kv.resultOf[msg.CommandIndex] <- result
 		kv.mu.Unlock()
@@ -202,7 +219,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	// You may need initialization code here.
 	kv.DB = make(map[string]string)
-	kv.resultOf = make(map[int]chan Op)
+	kv.resultOf = make(map[int]chan Result)
 	kv.lastRequestIDOf = make(map[int64]int64)
 	kv.killCh = make(chan bool, defaultChannelSize)
 
