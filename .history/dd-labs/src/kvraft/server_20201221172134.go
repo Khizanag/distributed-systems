@@ -137,6 +137,13 @@ func (kv *KVServer) processAppendRequest(op *Op, result *Op) {
 	result.Err = OK
 }
 
+func (kv *KVServer) processPutRequest(op *Op, result *Op) {
+	if !kv.isDuplicated(op) {
+		kv.DB[op.Key] = op.Value
+	}
+	result.Err = OK
+}
+
 func (kv *KVServer) processGetRequest(op *Op, result *Op) {
 	if value, ok := kv.DB[op.Key]; ok {
 		result.Err = OK
@@ -144,13 +151,6 @@ func (kv *KVServer) processGetRequest(op *Op, result *Op) {
 	} else {
 		result.Err = ErrNoKey
 	}
-}
-
-func (kv *KVServer) processPutRequest(op *Op, result *Op) {
-	if !kv.isDuplicated(op) {
-		kv.DB[op.Key] = op.Value
-	}
-	result.Err = OK
 }
 
 func (kv *KVServer) isDuplicated(op *Op) bool {

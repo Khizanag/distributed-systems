@@ -119,12 +119,22 @@ func (kv *KVServer) applyOp(op Op) Op {
 	}
 
 	switch op.FuncName {
+	case "Put":
+		if !kv.isDuplicated(op) {
+			kv.DB[op.Key] = op.Value
+		}
+		result.Err = OK
+		kv.processAppendRequest(&op, &result)
 	case "Append":
 		kv.processAppendRequest(&op, &result)
 	case "Get":
+		if value, ok := kv.DB[op.Key]; ok {
+			result.Err = OK
+			result.Value = value
+		} else {
+			result.Err = ErrNoKey
+		}
 		kv.processGetRequest(&op, &result)
-	case "Put":
-		kv.processPutRequest(&op, &result)
 	}
 	kv.lastRequestIDOf[op.ClientID] = op.RequestID
 	return result
@@ -133,22 +143,6 @@ func (kv *KVServer) applyOp(op Op) Op {
 func (kv *KVServer) processAppendRequest(op *Op, result *Op) {
 	if !kv.isDuplicated(op) {
 		kv.DB[op.Key] += op.Value
-	}
-	result.Err = OK
-}
-
-func (kv *KVServer) processGetRequest(op *Op, result *Op) {
-	if value, ok := kv.DB[op.Key]; ok {
-		result.Err = OK
-		result.Value = value
-	} else {
-		result.Err = ErrNoKey
-	}
-}
-
-func (kv *KVServer) processPutRequest(op *Op, result *Op) {
-	if !kv.isDuplicated(op) {
-		kv.DB[op.Key] = op.Value
 	}
 	result.Err = OK
 }
