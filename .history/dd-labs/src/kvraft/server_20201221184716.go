@@ -51,7 +51,7 @@ type KVServer struct {
 	killCh          chan bool
 }
 
-func (kv *KVServer) processRequst(entry Op) Op {
+func (kv *KVServer) insertRequestIntoPool(entry Op) Op {
 	index, _, isLeader := kv.rf.Start(entry)
 
 	resultToReturn := kv.getErrorOp()
@@ -107,7 +107,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		RequestID: args.RequestID,
 	}
 
-	result := kv.processRequst(op)
+	result := kv.appendEntryToLog(op)
 	reply.Err = result.Err
 }
 
@@ -179,12 +179,8 @@ func (kv *KVServer) killed() bool {
 
 func (kv *KVServer) worker() {
 	for {
-		select {
-		case applyMsg := <-kv.applyCh:
-			kv.processApplyMessage(applyMsg)
-		case <-kv.killCh:
-			break
-		}
+		applyMsg := <-kv.applyCh
+		kv.processApplyMessage(applyMsg)
 	}
 }
 

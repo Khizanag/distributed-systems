@@ -182,9 +182,8 @@ func (kv *KVServer) worker() {
 		select {
 		case applyMsg := <-kv.applyCh:
 			kv.processApplyMessage(applyMsg)
-		case <-kv.killCh:
-			break
 		}
+
 	}
 }
 

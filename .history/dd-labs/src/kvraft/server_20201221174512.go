@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	WaitTime           = 250
 	defaultChannelSize = 100
 	Debug              = 0
 )
@@ -51,7 +50,7 @@ type KVServer struct {
 	killCh          chan bool
 }
 
-func (kv *KVServer) processRequst(entry Op) Op {
+func (kv *KVServer) appendEntryToLog(entry Op) Op {
 	index, _, isLeader := kv.rf.Start(entry)
 
 	resultToReturn := kv.getErrorOp()
@@ -61,10 +60,10 @@ func (kv *KVServer) processRequst(entry Op) Op {
 
 		select {
 		case result := <-kv.resultOf[index]:
-			if entry.isEqual(&result) {
+			if isMatch(entry, result) {
 				resultToReturn = result
 			}
-		case <-time.After(WaitTime * time.Millisecond):
+		case <-time.After(240 * time.Millisecond):
 		}
 	}
 	return resultToReturn
@@ -79,9 +78,8 @@ func (kv *KVServer) initForData(index int) {
 	}
 }
 
-func (this *Op) isEqual(other *Op) bool {
-	return this.ClientID == other.ClientID &&
-		this.RequestID == other.RequestID
+func isMatch(entry Op, result Op) bool {
+	return entry.ClientID == result.ClientID && entry.RequestID == result.RequestID
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -93,13 +91,14 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		RequestID: args.RequestID,
 	}
 
-	result := kv.processRequst(entry)
+	result := kv.appendEntryToLog(entry)
 	reply.Err = result.Err
 	reply.Value = result.Value
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	op := Op{
+	// Your code here.
+	entry := Op{
 		Key:       args.Key,
 		Value:     args.Value,
 		FuncName:  args.Command,
@@ -107,11 +106,18 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		RequestID: args.RequestID,
 	}
 
-	result := kv.processRequst(op)
+	result := kv.appendEntryToLog(entry)
 	reply.Err = result.Err
 }
 
 func (kv *KVServer) applyOp(op Op) Op {
+	// result := Op{
+	// 	FuncName:  op.FuncName,
+	// 	Key:       op.Key,
+	// 	ClientID:  op.ClientID,
+	// 	RequestID: op.RequestID,
+	// }
+
 	switch op.FuncName {
 	case "Append":
 		kv.processAppendRequest(&op)
@@ -179,12 +185,8 @@ func (kv *KVServer) killed() bool {
 
 func (kv *KVServer) worker() {
 	for {
-		select {
-		case applyMsg := <-kv.applyCh:
-			kv.processApplyMessage(applyMsg)
-		case <-kv.killCh:
-			break
-		}
+		applyMsg := <-kv.applyCh
+		kv.processApplyMessage(applyMsg)
 	}
 }
 

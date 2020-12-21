@@ -185,6 +185,7 @@ func (kv *KVServer) worker() {
 		case <-kv.killCh:
 			break
 		}
+
 	}
 }
 

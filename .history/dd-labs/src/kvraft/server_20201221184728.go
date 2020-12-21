@@ -179,12 +179,8 @@ func (kv *KVServer) killed() bool {
 
 func (kv *KVServer) worker() {
 	for {
-		select {
-		case applyMsg := <-kv.applyCh:
-			kv.processApplyMessage(applyMsg)
-		case <-kv.killCh:
-			break
-		}
+		applyMsg := <-kv.applyCh
+		kv.processApplyMessage(applyMsg)
 	}
 }
 
