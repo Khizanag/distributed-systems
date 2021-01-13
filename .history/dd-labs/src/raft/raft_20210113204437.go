@@ -181,18 +181,19 @@ func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	defer rf.mu.Unlock()
 
 	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogEntry(false).Index
-	if index > baseIndex && index <= lastIndex {
-		rf.truncateLog(index, rf.log[index-baseIndex].Term)
-
-		w := new(bytes.Buffer)
-		e := labgob.NewEncoder(w)
-		e.Encode(rf.log[0].Index)
-		e.Encode(rf.log[0].Term)
-		snapshot := append(w.Bytes(), kvSnapshot...)
-
-		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
-
+	if index <= baseIndex || index > lastIndex {
+		// can't trim log since index is invalid
+		return
 	}
+	rf.truncateLog(index, rf.log[index-baseIndex].Term)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.log[0].Index)
+	e.Encode(rf.log[0].Term)
+	snapshot := append(w.Bytes(), kvSnapshot...)
+
+	rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
 }
 
 func (rf *Raft) recoverFromSnapshot(snapshot []byte) {

@@ -181,20 +181,24 @@ func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	defer rf.mu.Unlock()
 
 	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogEntry(false).Index
-	if index > baseIndex && index <= lastIndex {
-		rf.truncateLog(index, rf.log[index-baseIndex].Term)
-
-		w := new(bytes.Buffer)
-		e := labgob.NewEncoder(w)
-		e.Encode(rf.log[0].Index)
-		e.Encode(rf.log[0].Term)
-		snapshot := append(w.Bytes(), kvSnapshot...)
-
-		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
-
+	if index <= baseIndex || index > lastIndex {
+		// can't trim log since index is invalid
+		return
 	}
+	rf.truncateLog(index, rf.log[index-baseIndex].Term)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.log[0].Index)
+	e.Encode(rf.log[0].Term)
+	snapshot := append(w.Bytes(), kvSnapshot...)
+
+	rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
 }
 
+//
+// recover from previous raft snapshot.
+//
 func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	if snapshot == nil || len(snapshot) < 1 {
 		return
@@ -228,13 +232,13 @@ func (rf *Raft) applyLog() {
 	for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
 		msg := ApplyMsg{
 			CommandIndex: i,
-			CommandValid: true,
-			Command:      rf.log[i-baseIndex].Command,
+CommandValid = true,
+
 		}
 
+		msg.Command = rf.log[i-baseIndex].Command
 		rf.applyCh <- msg
 	}
-
 	rf.lastApplied = rf.commitIndex
 }
 
