@@ -877,7 +877,7 @@ func (r *Raft) applyLogWorker() {
 		// 	}
 		// }
 
-		r.applyLogEntries()
+		r.applyLog()
 
 		time.Sleep(20 * time.Millisecond)
 	}

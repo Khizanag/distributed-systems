@@ -877,14 +877,14 @@ func (r *Raft) applyLogWorker() {
 		// 	}
 		// }
 
-		r.applyLogEntries()
+		r.applyLog()
 
 		time.Sleep(20 * time.Millisecond)
 	}
 }
 
 func (r *Raft) applyLogEntries() {
-	r.mu.Lock()
+	r.mu.Unlock()
 	defer r.mu.Unlock()
 
 	zerothIndex := r.log[0].Index

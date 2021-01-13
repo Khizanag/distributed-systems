@@ -884,7 +884,7 @@ func (r *Raft) applyLogWorker() {
 }
 
 func (r *Raft) applyLogEntries() {
-	r.mu.Lock()
+	r.mu.Unlock()
 	defer r.mu.Unlock()
 
 	zerothIndex := r.log[0].Index

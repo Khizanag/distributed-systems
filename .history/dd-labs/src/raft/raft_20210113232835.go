@@ -573,7 +573,7 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 
 	if r.commitIndex < args.LeaderCommit {
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
-		// go r.applyLog()
+		go r.applyLog()
 	}
 
 }
@@ -635,7 +635,7 @@ func (r *Raft) updateCommitIndex() {
 		}
 		if count > len(r.peers)/2 {
 			r.commitIndex = N
-			// go r.applyLog()
+			go r.applyLog()
 			break
 		}
 	}
@@ -813,7 +813,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	r.persist()
 
 	go r.Worker()
-	go r.applyLogWorker()
+	// go r.applyLogWorker()
 
 	return r
 }
@@ -884,7 +884,7 @@ func (r *Raft) applyLogWorker() {
 }
 
 func (r *Raft) applyLogEntries() {
-	r.mu.Lock()
+	r.mu.Unlock()
 	defer r.mu.Unlock()
 
 	zerothIndex := r.log[0].Index
@@ -892,8 +892,8 @@ func (r *Raft) applyLogEntries() {
 	for i := r.lastApplied + 1; i <= r.commitIndex; i++ {
 		applyMsg := ApplyMsg{
 			CommandValid: true,
-			CommandIndex: i,
-			Command:      r.log[i-zerothIndex].Command,
+			CommandIndex: r.lastApplied,
+			Command:      r.log[r.lastApplied-zerothIndex].Command,
 		}
 		r.applyCh <- applyMsg
 	}

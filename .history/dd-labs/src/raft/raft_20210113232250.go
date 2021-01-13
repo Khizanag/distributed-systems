@@ -573,7 +573,7 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 
 	if r.commitIndex < args.LeaderCommit {
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
-		// go r.applyLog()
+		go r.applyLog()
 	}
 
 }
@@ -635,7 +635,7 @@ func (r *Raft) updateCommitIndex() {
 		}
 		if count > len(r.peers)/2 {
 			r.commitIndex = N
-			// go r.applyLog()
+			go r.applyLog()
 			break
 		}
 	}
@@ -813,7 +813,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	r.persist()
 
 	go r.Worker()
-	go r.applyLogWorker()
+	// go r.applyLogWorker()
 
 	return r
 }
@@ -859,46 +859,44 @@ func (r *Raft) runFollowerJob() {
 
 func (r *Raft) applyLogWorker() {
 	for !r.killed() {
-		// r.mu.Lock()
-		// for r.commitIndex > r.lastApplied {
-		// 	r.lastApplied++
-		// 	if len(r.log) <= r.lastApplied {
-		// 		break
-		// 	}
-		// 	applyMsg := ApplyMsg{
-		// 		CommandValid: true,
-		// 		CommandIndex: r.lastApplied,
-		// 		Command:      r.log[r.lastApplied].Command,
-		// 	}
-		// 	r.applyCh <- applyMsg
+		r.mu.Lock()
+		for r.commitIndex > r.lastApplied {
+			r.lastApplied++
+			if len(r.log) <= r.lastApplied {
+				break
+			}
+			applyMsg := ApplyMsg{
+				CommandValid: true,
+				CommandIndex: r.lastApplied,
+				Command:      r.log[r.lastApplied].Command,
+			}
+			r.applyCh <- applyMsg
 
-		// 	if isDebugMode {
-		// 		fmt.Printf("-- updateAppliedLogs: Raft#%d applied %v on index: %v\n", r.me, applyMsg.Command, applyMsg.CommandIndex)
-		// 	}
-		// }
+			if isDebugMode {
+				fmt.Printf("-- updateAppliedLogs: Raft#%d applied %v on index: %v\n", r.me, applyMsg.Command, applyMsg.CommandIndex)
+			}
+		}
 
-		r.applyLogEntries()
 
 		time.Sleep(20 * time.Millisecond)
 	}
 }
 
-func (r *Raft) applyLogEntries() {
-	r.mu.Lock()
+func (r *Raft) applyLogEntries( {
+	r.mu.Unlock()
 	defer r.mu.Unlock()
 
-	zerothIndex := r.log[0].Index
+	baseIndex := r.log[0].Index
 
-	for i := r.lastApplied + 1; i <= r.commitIndex; i++ {
-		applyMsg := ApplyMsg{
-			CommandValid: true,
-			CommandIndex: i,
-			Command:      r.log[i-zerothIndex].Command,
-		}
-		r.applyCh <- applyMsg
+	for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
+		msg := ApplyMsg{}
+		msg.CommandIndex = i
+		msg.CommandValid = true
+		msg.Command = rf.log[i-baseIndex].Command
+		rf.applyCh <- msg
 	}
-	r.lastApplied = r.commitIndex
-}
+	rf.lastApplied = rf.commitIndex
+})
 
 // ##################################################################################################
 // ##################################################################################################

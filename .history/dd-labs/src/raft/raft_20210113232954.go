@@ -884,7 +884,7 @@ func (r *Raft) applyLogWorker() {
 }
 
 func (r *Raft) applyLogEntries() {
-	r.mu.Lock()
+	r.mu.Unlock()
 	defer r.mu.Unlock()
 
 	zerothIndex := r.log[0].Index
@@ -893,7 +893,7 @@ func (r *Raft) applyLogEntries() {
 		applyMsg := ApplyMsg{
 			CommandValid: true,
 			CommandIndex: i,
-			Command:      r.log[i-zerothIndex].Command,
+			Command:      r.log[r.lastApplied-zerothIndex].Command,
 		}
 		r.applyCh <- applyMsg
 	}
