@@ -223,69 +223,70 @@ type InstallSnapshotReply struct {
 	Term int
 }
 
-func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
+func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	reply.Term = r.currentTerm
-
-	if args.Term < r.currentTerm {
+	if args.Term < rf.currentTerm {
+		// reject requests with stale term number
+		reply.Term = rf.currentTerm
 		return
 	}
 
-	r.tryIncreaseCurrentTerm(args.Term)
+	rf.tryIncreaseCurrentTerm(args.Term)
 
-	r.heartbeatReceivedCh <- true
+	// confirm heartbeat to refresh timeout
+	rf.heartbeatReceivedCh <- true
 
-	if args.LastIncludedIndex > r.commitIndex {
-		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
-		r.lastApplied = args.LastIncludedIndex
-		r.commitIndex = args.LastIncludedIndex
-		r.persister.SaveStateAndSnapshot(r.getRaftState(), args.Data)
+	reply.Term = rf.currentTerm
 
-		applyMsg := ApplyMsg{
-			UseSnapshot: true,
-			Snapshot:    args.Data,
-		}
-		r.applyCh <- applyMsg
+	if args.LastIncludedIndex > rf.commitIndex {
+		rf.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
+		rf.lastApplied = args.LastIncludedIndex
+		rf.commitIndex = args.LastIncludedIndex
+		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
+
+		// send snapshot to kv server
+		msg := ApplyMsg{UseSnapshot: true, Snapshot: args.Data}
+		rf.applyCh <- msg
 	}
 }
 
-func (r *Raft) truncateLog(lastIndex int, lastTerm int) {
+func (rf *Raft) truncateLog(lastIndex int, lastTerm int) {
 	zerothLogEntry := LogEntry{
 		Index: lastIndex,
 		Term:  lastTerm,
 	}
 	newLog := []LogEntry{zerothLogEntry}
 
-	for i := len(r.log) - 1; i >= 0; i-- {
-		if r.log[i].Index == lastIndex && r.log[i].Term == lastTerm {
-			newLog = append(newLog, r.log[i+1:]...)
+	for i := len(rf.log) - 1; i >= 0; i-- {
+		if rf.log[i].Index == lastIndex && rf.log[i].Term == lastTerm {
+			newLog = append(newLog, rf.log[i+1:]...)
 			break
 		}
 	}
-	r.log = newLog
+	rf.log = newLog
 }
 
 func (r *Raft) sendInstallSnapshotRPC(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
-	ok := r.peers[server].Call("Raft.InstallSnapshot", args, reply)
+	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
 	return ok
 }
 
-func (r *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
+func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
 	ok := r.sendInstallSnapshotRPC(server, args, reply)
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	if !ok || r.role != Leader || args.Term != r.currentTerm || r.tryIncreaseCurrentTerm(reply.Term) {
+	if !ok || rf.role != Leader || args.Term != rf.currentTerm || rf.tryIncreaseCurrentTerm(reply.Term) {
 		return false
 	}
 
-	r.nextIndex[server] = args.LastIncludedIndex + 1
-	r.matchIndex[server] = args.LastIncludedIndex
+	rf.nextIndex[server] = args.LastIncludedIndex + 1
+	rf.matchIndex[server] = args.LastIncludedIndex
 
 	return ok
 }

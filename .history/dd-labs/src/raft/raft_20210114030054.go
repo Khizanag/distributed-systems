@@ -169,15 +169,20 @@ func (rf *Raft) GetRaftStateSize() int {
 	return rf.persister.RaftStateSize()
 }
 
+//
+// append raft information to kv server snapshot and save whole snapshot.
+// the snapshot will include changes up to log entry with given index.
+//
 func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
 	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogEntry(false).Index
 	if index <= baseIndex || index > lastIndex {
+		// can't trim log since index is invalid
 		return
 	}
-	rf.truncateLog(index, rf.log[index-baseIndex].Term)
+	rf.trimLog(index, rf.log[index-baseIndex].Term)
 
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
@@ -204,7 +209,7 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 
 	rf.lastApplied = lastIncludedIndex
 	rf.commitIndex = lastIncludedIndex
-	rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
+	rf.trimLog(lastIncludedIndex, lastIncludedTerm)
 
 	// send snapshot to kv server
 	msg := ApplyMsg{UseSnapshot: true, Snapshot: snapshot}
@@ -223,70 +228,66 @@ type InstallSnapshotReply struct {
 	Term int
 }
 
-func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
+func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	reply.Term = r.currentTerm
-
-	if args.Term < r.currentTerm {
+	if args.Term < rf.currentTerm {
+		// reject requests with stale term number
+		reply.Term = rf.currentTerm
 		return
 	}
 
-	r.tryIncreaseCurrentTerm(args.Term)
+	rf.tryIncreaseCurrentTerm(args.Term)
 
-	r.heartbeatReceivedCh <- true
+	// confirm heartbeat to refresh timeout
+	rf.heartbeatReceivedCh <- true
 
-	if args.LastIncludedIndex > r.commitIndex {
-		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
-		r.lastApplied = args.LastIncludedIndex
-		r.commitIndex = args.LastIncludedIndex
-		r.persister.SaveStateAndSnapshot(r.getRaftState(), args.Data)
+	reply.Term = rf.currentTerm
 
-		applyMsg := ApplyMsg{
-			UseSnapshot: true,
-			Snapshot:    args.Data,
-		}
-		r.applyCh <- applyMsg
+	if args.LastIncludedIndex > rf.commitIndex {
+		rf.trimLog(args.LastIncludedIndex, args.LastIncludedTerm)
+		rf.lastApplied = args.LastIncludedIndex
+		rf.commitIndex = args.LastIncludedIndex
+		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
+
+		// send snapshot to kv server
+		msg := ApplyMsg{UseSnapshot: true, Snapshot: args.Data}
+		rf.applyCh <- msg
 	}
 }
 
-func (r *Raft) truncateLog(lastIndex int, lastTerm int) {
-	zerothLogEntry := LogEntry{
-		Index: lastIndex,
-		Term:  lastTerm,
-	}
-	newLog := []LogEntry{zerothLogEntry}
+func (rf *Raft) trimLog(lastIncludedIndex int, lastIncludedTerm int) {
+	newLog := make([]LogEntry, 0)
+	newLog = append(newLog, LogEntry{Index: lastIncludedIndex, Term: lastIncludedTerm})
 
-	for i := len(r.log) - 1; i >= 0; i-- {
-		if r.log[i].Index == lastIndex && r.log[i].Term == lastTerm {
-			newLog = append(newLog, r.log[i+1:]...)
+	for i := len(rf.log) - 1; i >= 0; i-- {
+		if rf.log[i].Index == lastIncludedIndex && rf.log[i].Term == lastIncludedTerm {
+			newLog = append(newLog, rf.log[i+1:]...)
 			break
 		}
 	}
-	r.log = newLog
+	rf.log = newLog
 }
 
-func (r *Raft) sendInstallSnapshotRPC(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
-	ok := r.peers[server].Call("Raft.InstallSnapshot", args, reply)
-	return ok
-}
+func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
+	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
 
-func (r *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
-	ok := r.sendInstallSnapshotRPC(server, args, reply)
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
-
-	if !ok || r.role != Leader || args.Term != r.currentTerm || r.tryIncreaseCurrentTerm(reply.Term) {
+	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
 		return false
 	}
 
-	r.nextIndex[server] = args.LastIncludedIndex + 1
-	r.matchIndex[server] = args.LastIncludedIndex
+	if rf.tryIncreaseCurrentTerm(reply.Term) {
+		return ok
+	}
 
+	rf.nextIndex[server] = args.LastIncludedIndex + 1
+	rf.matchIndex[server] = args.LastIncludedIndex
 	return ok
 }
 
@@ -603,10 +604,17 @@ func (r *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, rep
 }
 
 func (r *Raft) updateCommitIndex() {
-	zerothIndex := r.log[0].Index
-	for i := r.getLastLogEntry(false).Index; i > r.commitIndex && r.log[i-zerothIndex].Term == r.currentTerm; i-- {
-		if r.countServersThatReceived(i) > r.getServersCount()/2 {
-			r.commitIndex = i
+	baseIndex := r.log[0].Index
+	for N := r.getLastLogEntry(false).Index; N > r.commitIndex && r.log[N-baseIndex].Term == r.currentTerm; N-- {
+		// find if there exists an N to update commitIndex
+		count := 1
+		for i := range r.peers {
+			if i != r.me && r.matchIndex[i] >= N {
+				count++
+			}
+		}
+		if count > len(r.peers)/2 {
+			r.commitIndex = N
 			break
 		}
 	}

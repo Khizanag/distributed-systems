@@ -223,32 +223,33 @@ type InstallSnapshotReply struct {
 	Term int
 }
 
-func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.persist()
+func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	defer rf.persist()
 
-	reply.Term = r.currentTerm
-
-	if args.Term < r.currentTerm {
+	if args.Term < rf.currentTerm {
+		// reject requests with stale term number
+		reply.Term = rf.currentTerm
 		return
 	}
 
-	r.tryIncreaseCurrentTerm(args.Term)
+	rf.tryIncreaseCurrentTerm(args.Term)
 
-	r.heartbeatReceivedCh <- true
+	// confirm heartbeat to refresh timeout
+	rf.heartbeatReceivedCh <- true
 
-	if args.LastIncludedIndex > r.commitIndex {
-		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
-		r.lastApplied = args.LastIncludedIndex
-		r.commitIndex = args.LastIncludedIndex
-		r.persister.SaveStateAndSnapshot(r.getRaftState(), args.Data)
+	reply.Term = rf.currentTerm
 
-		applyMsg := ApplyMsg{
-			UseSnapshot: true,
-			Snapshot:    args.Data,
-		}
-		r.applyCh <- applyMsg
+	if args.LastIncludedIndex > rf.commitIndex {
+		rf.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
+		rf.lastApplied = args.LastIncludedIndex
+		rf.commitIndex = args.LastIncludedIndex
+		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
+
+		// send snapshot to kv server
+		msg := ApplyMsg{UseSnapshot: true, Snapshot: args.Data}
+		rf.applyCh <- msg
 	}
 }
 

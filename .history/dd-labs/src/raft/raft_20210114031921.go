@@ -228,9 +228,9 @@ func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshot
 	defer r.mu.Unlock()
 	defer r.persist()
 
-	reply.Term = r.currentTerm
+	reply.Term = rf.currentTerm
 
-	if args.Term < r.currentTerm {
+	if args.Term < rf.currentTerm {
 		return
 	}
 
@@ -238,11 +238,11 @@ func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshot
 
 	r.heartbeatReceivedCh <- true
 
-	if args.LastIncludedIndex > r.commitIndex {
+	if args.LastIncludedIndex > rf.commitIndex {
 		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
 		r.lastApplied = args.LastIncludedIndex
 		r.commitIndex = args.LastIncludedIndex
-		r.persister.SaveStateAndSnapshot(r.getRaftState(), args.Data)
+		r.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
 
 		applyMsg := ApplyMsg{
 			UseSnapshot: true,
