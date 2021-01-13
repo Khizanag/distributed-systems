@@ -707,8 +707,8 @@ func (r *Raft) broadcastHeartbeats() {
 
 				go r.sendAppendEntriesHandler(server, args, reply)
 			} else {
-				args := r.getInstallSnapshotArgs(snapshot)
-				reply := r.getInstallSnapshotReply()
+				args := r.getInstallSnapshotArgs()
+				reply := &InstallSnapshotReply{}
 
 				go r.sendInstallSnapshot(server, args, reply)
 			}

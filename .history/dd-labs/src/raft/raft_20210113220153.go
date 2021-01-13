@@ -695,20 +695,38 @@ func (r *Raft) broadcastHeartbeats() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	zerothIndex := r.log[0].Index
+	baseIndex := r.log[0].Index
 	snapshot := r.persister.ReadSnapshot()
 
 	for server := range r.peers {
 		if !r.killed() && server != r.me && r.role == Leader {
 
-			if r.nextIndex[server] > zerothIndex {
-				args := r.getAppendEntriesArgs(server, zerothIndex)
+			if r.nextIndex[server] > baseIndex {
+				// args := r.getAppendEntriesArgs(server)
 				reply := r.getAppendEntriesReply(server)
+
+				args := &AppendEntriesArgs{}
+				args.Term = r.currentTerm
+				args.LeaderID = r.me
+				args.PrevLogIndex = r.nextIndex[server] - 1
+				if args.PrevLogIndex >= baseIndex {
+					args.PrevLogTerm = r.log[args.PrevLogIndex-baseIndex].Term
+				}
+				if r.nextIndex[server] <= r.getLastLogEntry(false).Index {
+					args.Entries = r.log[r.nextIndex[server]-baseIndex:]
+				}
+				args.LeaderCommit = r.commitIndex
 
 				go r.sendAppendEntriesHandler(server, args, reply)
 			} else {
-				args := r.getInstallSnapshotArgs(snapshot)
-				reply := r.getInstallSnapshotReply()
+				args := &InstallSnapshotArgs{
+					Term:              r.currentTerm,
+					LeaderId:          r.me,
+					LastIncludedIndex: r.log[0].Index,
+					LastIncludedTerm:  r.log[0].Term,
+					Data:              snapshot,
+				}
+				reply := &InstallSnapshotReply{}
 
 				go r.sendInstallSnapshot(server, args, reply)
 			}
@@ -716,40 +734,20 @@ func (r *Raft) broadcastHeartbeats() {
 	}
 }
 
-func (r *Raft) getAppendEntriesArgs(server int, zerothIndex int) *AppendEntriesArgs {
-	args := &AppendEntriesArgs{
+func (r *Raft) getAppendEntriesArgs(server int) *AppendEntriesArgs {
+	logIndex := r.nextIndex[server] - 1
+	return &AppendEntriesArgs{
 		Term:         r.currentTerm,
 		LeaderID:     r.me,
-		PrevLogIndex: r.nextIndex[server] - 1,
+		PrevLogIndex: logIndex,
+		PrevLogTerm:  r.log[logIndex].Term,
+		Entries:      r.log[r.nextIndex[server]:],
 		LeaderCommit: r.commitIndex,
 	}
-
-	if args.PrevLogIndex >= zerothIndex {
-		args.PrevLogTerm = r.log[args.PrevLogIndex-zerothIndex].Term
-	}
-	if r.nextIndex[server] <= r.getLastLogEntry(false).Index {
-		args.Entries = r.log[r.nextIndex[server]-zerothIndex:]
-	}
-
-	return args
 }
 
 func (r *Raft) getAppendEntriesReply(server int) *AppendEntriesReply {
 	return &AppendEntriesReply{}
-}
-
-func (r *Raft) getInstallSnapshotArgs(snapshot []byte) *InstallSnapshotArgs {
-	return &InstallSnapshotArgs{
-		Term:              r.currentTerm,
-		LeaderId:          r.me,
-		LastIncludedIndex: r.log[0].Index,
-		LastIncludedTerm:  r.log[0].Term,
-		Data:              snapshot,
-	}
-}
-
-func (r *Raft) getInstallSnapshotReply() *InstallSnapshotReply {
-	return &InstallSnapshotReply{}
 }
 
 //

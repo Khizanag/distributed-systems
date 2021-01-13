@@ -707,8 +707,8 @@ func (r *Raft) broadcastHeartbeats() {
 
 				go r.sendAppendEntriesHandler(server, args, reply)
 			} else {
-				args := r.getInstallSnapshotArgs(snapshot)
-				reply := r.getInstallSnapshotReply()
+				args := r.getInstallSnapshotArgs()
+				reply := &InstallSnapshotReply{}
 
 				go r.sendInstallSnapshot(server, args, reply)
 			}
@@ -738,7 +738,7 @@ func (r *Raft) getAppendEntriesReply(server int) *AppendEntriesReply {
 	return &AppendEntriesReply{}
 }
 
-func (r *Raft) getInstallSnapshotArgs(snapshot []byte) *InstallSnapshotArgs {
+func (r *Raft) getInstallSnapshotArgs() *InstallSnapshotArgs {
 	return &InstallSnapshotArgs{
 		Term:              r.currentTerm,
 		LeaderId:          r.me,
@@ -746,10 +746,6 @@ func (r *Raft) getInstallSnapshotArgs(snapshot []byte) *InstallSnapshotArgs {
 		LastIncludedTerm:  r.log[0].Term,
 		Data:              snapshot,
 	}
-}
-
-func (r *Raft) getInstallSnapshotReply() *InstallSnapshotReply {
-	return &InstallSnapshotReply{}
 }
 
 //
