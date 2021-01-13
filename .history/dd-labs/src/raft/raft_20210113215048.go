@@ -546,14 +546,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 	defer rf.persist()
 
-	if args.Term >= rf.currentTerm && args.PrevLogIndex <= rf.getLastLogEntry(false).Index {
-		rf.tryIncreaseCurrentTerm(args.Term)
-		rf.initAppendEntriesReplyDefaults(reply)
+	rf.initAppendEntriesReplyDefaults(reply)
 
-		rf.heartbeatReceivedCh <- true
-
-		rf.rame(args, reply)
+	if args.Term < rf.currentTerm || args.PrevLogIndex > rf.getLastLogEntry(false).Index {
+		return
 	}
+
+	rf.tryIncreaseCurrentTerm(args.Term)
+
+	rf.heartbeatReceivedCh <- true
+
+	rf.rame(args, reply)
 }
 
 func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
