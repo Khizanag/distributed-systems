@@ -181,24 +181,20 @@ func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	defer rf.mu.Unlock()
 
 	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogEntry(false).Index
-	if index <= baseIndex || index > lastIndex {
-		// can't trim log since index is invalid
-		return
+	if index > baseIndex && index <= lastIndex {
+		rf.truncateLog(index, rf.log[index-baseIndex].Term)
+
+		w := new(bytes.Buffer)
+		e := labgob.NewEncoder(w)
+		e.Encode(rf.log[0].Index)
+		e.Encode(rf.log[0].Term)
+		snapshot := append(w.Bytes(), kvSnapshot...)
+
+		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
+
 	}
-	rf.trimLog(index, rf.log[index-baseIndex].Term)
-
-	w := new(bytes.Buffer)
-	e := labgob.NewEncoder(w)
-	e.Encode(rf.log[0].Index)
-	e.Encode(rf.log[0].Term)
-	snapshot := append(w.Bytes(), kvSnapshot...)
-
-	rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
 }
 
-//
-// recover from previous raft snapshot.
-//
 func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	if snapshot == nil || len(snapshot) < 1 {
 		return
@@ -207,16 +203,20 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	var lastIncludedIndex, lastIncludedTerm int
 	r := bytes.NewBuffer(snapshot)
 	d := labgob.NewDecoder(r)
-	d.Decode(&lastIncludedIndex)
-	d.Decode(&lastIncludedTerm)
 
-	rf.lastApplied = lastIncludedIndex
-	rf.commitIndex = lastIncludedIndex
-	rf.trimLog(lastIncludedIndex, lastIncludedTerm)
+	if d.Decode(&lastIncludedIndex) != nil || d.Decode(&lastIncludedTerm) != nil {
+		fmt.Printf("-- raft.recoverFromSnapshot: error during decoding\n")
+	} else {
+		rf.lastApplied = lastIncludedIndex
+		rf.commitIndex = lastIncludedIndex
+		rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
+	}
 
-	// send snapshot to kv server
-	msg := ApplyMsg{UseSnapshot: true, Snapshot: snapshot}
-	rf.applyCh <- msg
+	applyMsg := ApplyMsg{
+		UseSnapshot: true,
+		Snapshot:    snapshot,
+	}
+	rf.applyCh <- applyMsg
 }
 
 func (rf *Raft) applyLog() {
@@ -226,12 +226,15 @@ func (rf *Raft) applyLog() {
 	baseIndex := rf.log[0].Index
 
 	for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
-		msg := ApplyMsg{}
-		msg.CommandIndex = i
-		msg.CommandValid = true
-		msg.Command = rf.log[i-baseIndex].Command
+		msg := ApplyMsg{
+			CommandIndex: i,
+			CommandValid: true,
+			Command:      rf.log[i-baseIndex].Command,
+		}
+
 		rf.applyCh <- msg
 	}
+
 	rf.lastApplied = rf.commitIndex
 }
 
@@ -253,68 +256,70 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	defer rf.persist()
 
 	if args.Term < rf.currentTerm {
-		// reject requests with stale term number
 		reply.Term = rf.currentTerm
 		return
 	}
 
-	// if args.Term > rf.currentTerm {
-	// 	// become follower and update current term
-	// 	rf.role = Follower
-	// 	rf.currentTerm = args.Term
-	// 	rf.votedFor = -1
-	// 	rf.persist()
-	// }
 	rf.tryIncreaseCurrentTerm(args.Term)
 
-	// confirm heartbeat to refresh timeout
 	rf.heartbeatReceivedCh <- true
 
 	reply.Term = rf.currentTerm
 
 	if args.LastIncludedIndex > rf.commitIndex {
-		rf.trimLog(args.LastIncludedIndex, args.LastIncludedTerm)
+		rf.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
 		rf.lastApplied = args.LastIncludedIndex
 		rf.commitIndex = args.LastIncludedIndex
 		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
 
-		// send snapshot to kv server
-		msg := ApplyMsg{UseSnapshot: true, Snapshot: args.Data}
-		rf.applyCh <- msg
+		applyMsg := ApplyMsg{
+			UseSnapshot: true,
+			Snapshot:    args.Data,
+		}
+		rf.applyCh <- applyMsg
 	}
 }
 
-func (rf *Raft) trimLog(lastIncludedIndex int, lastIncludedTerm int) {
-	newLog := make([]LogEntry, 0)
-	newLog = append(newLog, LogEntry{Index: lastIncludedIndex, Term: lastIncludedTerm})
+func (r *Raft) truncateLog(lastIndex int, lastTerm int) {
+	zerothLogEntry := LogEntry{
+		Index: lastIndex,
+		Term:  lastTerm,
+	}
+	newLog := []LogEntry{zerothLogEntry}
 
-	for i := len(rf.log) - 1; i >= 0; i-- {
-		if rf.log[i].Index == lastIncludedIndex && rf.log[i].Term == lastIncludedTerm {
-			newLog = append(newLog, rf.log[i+1:]...)
+	for i := len(r.log) - 1; i >= 0; i-- {
+		if r.log[i].Index == lastIndex && r.log[i].Term == lastTerm {
+			newLog = append(newLog, r.log[i+1:]...)
 			break
 		}
 	}
-	rf.log = newLog
+	r.log = newLog
 }
 
-func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
-	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
+func (r *Raft) sendInstallSnapshotHandlerRPC(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
+	ok := r.peers[server].Call("Raft.InstallSnapshot", args, reply)
+	return ok
+}
 
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	defer rf.persist()
+func (r *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
+	ok := r.sendInstallSnapshotHandlerRPC(server, args, reply)
 
-	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defer r.persist()
+
+	if r.killed() || !ok || r.role != Leader || args.Term != r.currentTerm {
 		return false
 	}
 
-	if rf.tryIncreaseCurrentTerm(reply.Term) {
-		return ok
+	if r.tryIncreaseCurrentTerm(reply.Term) {
+		return true
 	}
 
-	rf.nextIndex[server] = args.LastIncludedIndex + 1
-	rf.matchIndex[server] = args.LastIncludedIndex
-	return ok
+	r.nextIndex[server] = args.LastIncludedIndex + 1
+	r.matchIndex[server] = args.LastIncludedIndex
+
+	return true
 }
 
 // ##################################################################################################
@@ -546,17 +551,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 	defer rf.persist()
 
-	// rf.tryIncreaseCurrentTerm(args.Term)
-	// rf.initAppendEntriesReplyDefaults(reply)
-	// if args.Term < rf.currentTerm {
-	// 	return
-	// }
-	// rf.processAppendEntryRequest(args, reply)
-
 	reply.Success = false
 
 	if args.Term < rf.currentTerm {
-		// reject requests with stale term number
 		reply.Term = rf.currentTerm
 		reply.MismatchStartingIndex = rf.getLastLogEntry(false).Index + 1
 		return

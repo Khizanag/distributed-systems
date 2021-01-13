@@ -1,3 +1,37 @@
+
+Skip to content
+Pull requests
+Issues
+Marketplace
+Explore
+@Khizanag
+Khizanag /
+DistributedSystems
+Private
+
+1
+0
+
+    0
+
+Code
+Issues
+Pull requests
+Actions
+Projects
+Wiki
+Security
+Insights
+
+    Settings
+
+DistributedSystems/dd-labs/src/raft/raft.go /
+@Khizanag
+Khizanag 3B - 1
+Latest commit 5bdbbb2 2 hours ago
+History
+1 contributor
+993 lines (845 sloc) 27.7 KB
 package raft
 
 //
@@ -562,6 +596,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
+	// if args.Term > rf.currentTerm {
+	// 	rf.role = Follower
+	// 	rf.currentTerm = args.Term
+	// 	rf.votedFor = -1
+	// }
 	rf.tryIncreaseCurrentTerm(args.Term)
 
 	rf.heartbeatReceivedCh <- true
@@ -986,3 +1025,18 @@ func (r *Raft) getLastLogEntry(mustBeSafe bool) LogEntry {
 
 	return r.log[len(r.log)-1]
 }
+
+    © 2021 GitHub, Inc.
+    Terms
+    Privacy
+    Security
+    Status
+    Help
+
+    Contact GitHub
+    Pricing
+    API
+    Training
+    Blog
+    About
+

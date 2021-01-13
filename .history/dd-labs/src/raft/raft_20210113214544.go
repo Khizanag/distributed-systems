@@ -1,3 +1,4 @@
+
 package raft
 
 //
@@ -562,6 +563,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
+	// if args.Term > rf.currentTerm {
+	// 	rf.role = Follower
+	// 	rf.currentTerm = args.Term
+	// 	rf.votedFor = -1
+	// }
 	rf.tryIncreaseCurrentTerm(args.Term)
 
 	rf.heartbeatReceivedCh <- true
@@ -986,3 +992,18 @@ func (r *Raft) getLastLogEntry(mustBeSafe bool) LogEntry {
 
 	return r.log[len(r.log)-1]
 }
+
+    © 2021 GitHub, Inc.
+    Terms
+    Privacy
+    Security
+    Status
+    Help
+
+    Contact GitHub
+    Pricing
+    API
+    Training
+    Blog
+    About
+
