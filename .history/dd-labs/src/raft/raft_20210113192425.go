@@ -305,7 +305,8 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 	defer rf.persist()
 
 	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
-		return false
+		// invalid request
+		return ok
 	}
 
 	if rf.tryIncreaseCurrentTerm(reply.Term) {

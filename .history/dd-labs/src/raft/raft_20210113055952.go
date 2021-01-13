@@ -19,14 +19,12 @@ package raft
 
 import (
 	"bytes"
-	"encoding/gob"
 	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"../labgob"
 	"../labrpc"
 )
 
@@ -112,41 +110,45 @@ func (r *Raft) GetState() (int, bool) {
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
 //
-func (r *Raft) persist() {
-	w := new(bytes.Buffer)
-	e := gob.NewEncoder(w)
-	e.Encode(r.currentTerm)
-	e.Encode(r.votedFor)
-	e.Encode(r.log)
-	data := w.Bytes()
-	r.persister.SaveRaftState(data)
-}
+// func (r *Raft) persist() {
+// 	w := new(bytes.Buffer)
+// 	e := gob.NewEncoder(w)
+// 	e.Encode(r.dead)
+// 	e.Encode(r.currentTerm)
+// 	e.Encode(r.votedFor)
+// 	e.Encode(r.log)
+// 	data := w.Bytes()
+// 	r.persister.SaveRaftState(data)
+// }
 
-//
-// restore previously persisted state.
-//
-func (raft *Raft) readPersist(data []byte) {
-	if data == nil || len(data) < 1 { // bootstrap without any state?
-		return
-	}
+// //
+// // restore previously persisted state.
+// //
+// func (raft *Raft) readPersist(data []byte) {
+// 	if data == nil || len(data) < 1 { // bootstrap without any state?
+// 		return
+// 	}
 
-	r := bytes.NewBuffer(data)
-	d := gob.NewDecoder(r)
+// 	r := bytes.NewBuffer(data)
+// 	d := gob.NewDecoder(r)
 
-	var currentTerm int
-	var votedFor int
-	var log []LogEntry
+// 	var dead int32
+// 	var currentTerm int
+// 	var votedFor int
+// 	var log []LogEntry
 
-	if d.Decode(&currentTerm) != nil ||
-		d.Decode(&votedFor) != nil ||
-		d.Decode(&log) != nil {
-		fmt.Printf("Error during decoding information\n")
-	} else {
-		raft.currentTerm = currentTerm
-		raft.votedFor = votedFor
-		raft.log = log
-	}
-}
+// 	if d.Decode(&dead) != nil ||
+// 		d.Decode(&currentTerm) != nil ||
+// 		d.Decode(&votedFor) != nil ||
+// 		d.Decode(&log) != nil {
+// 		fmt.Printf("Error during decoding information\n")
+// 	} else {
+// 		raft.dead = dead
+// 		raft.currentTerm = currentTerm
+// 		raft.votedFor = votedFor
+// 		raft.log = log
+// 	}
+// }
 
 // ##################################################################################################
 // ##################################################################################################
@@ -156,6 +158,45 @@ func (raft *Raft) readPersist(data []byte) {
 // ##################################################################################################
 // ##################################################################################################
 
+func (rf *Raft) getLastLogTerm() int {
+	return rf.log[len(rf.log)-1].Term
+}
+
+func (rf *Raft) getLastLogIndex() int {
+	return rf.log[len(rf.log)-1].Index
+}
+
+//
+// save Raft's persistent state to stable storage,
+// where it can later be retrieved after a crash and restart.
+// see paper's Figure 2 for a description of what should be persistent.
+//
+func (rf *Raft) persist() {
+	// Your code here (2C).
+	// Example:
+	data := rf.getRaftState()
+	rf.persister.SaveRaftState(data)
+}
+
+//
+// restore previously persisted state.
+//
+func (rf *Raft) readPersist(data []byte) {
+	if data == nil || len(data) < 1 { // bootstrap without any state?
+		return
+	}
+	// Your code here (2C).
+	// Example:
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	d.Decode(&rf.currentTerm)
+	d.Decode(&rf.votedFor)
+	d.Decode(&rf.log)
+}
+
+//
+// encode current raft state.
+//
 func (rf *Raft) getRaftState() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
@@ -180,7 +221,7 @@ func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogEntry(false).Index
+	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogIndex()
 	if index <= baseIndex || index > lastIndex {
 		// can't trim log since index is invalid
 		return
@@ -216,7 +257,7 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 
 	// send snapshot to kv server
 	msg := ApplyMsg{UseSnapshot: true, Snapshot: snapshot}
-	rf.applyCh <- msg
+	rf.chanApply <- msg
 }
 
 func (rf *Raft) applyLog() {
@@ -230,7 +271,7 @@ func (rf *Raft) applyLog() {
 		msg.CommandIndex = i
 		msg.CommandValid = true
 		msg.Command = rf.log[i-baseIndex].Command
-		rf.applyCh <- msg
+		rf.chanApply <- msg
 	}
 	rf.lastApplied = rf.commitIndex
 }
@@ -250,7 +291,6 @@ type InstallSnapshotReply struct {
 func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer rf.persist()
 
 	if args.Term < rf.currentTerm {
 		// reject requests with stale term number
@@ -258,14 +298,13 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		return
 	}
 
-	// if args.Term > rf.currentTerm {
-	// 	// become follower and update current term
-	// 	rf.role = Follower
-	// 	rf.currentTerm = args.Term
-	// 	rf.votedFor = -1
-	// 	rf.persist()
-	// }
-	rf.tryIncreaseCurrentTerm(args.Term)
+	if args.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.role = Follower
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
+		rf.persist()
+	}
 
 	// confirm heartbeat to refresh timeout
 	rf.heartbeatReceivedCh <- true
@@ -284,6 +323,9 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	}
 }
 
+//
+// discard old log entries up to lastIncludedIndex.
+//
 func (rf *Raft) trimLog(lastIncludedIndex int, lastIncludedTerm int) {
 	newLog := make([]LogEntry, 0)
 	newLog = append(newLog, LogEntry{Index: lastIncludedIndex, Term: lastIncludedTerm})
@@ -299,16 +341,20 @@ func (rf *Raft) trimLog(lastIncludedIndex int, lastIncludedTerm int) {
 
 func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
 	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
-
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer rf.persist()
 
 	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
-		return false
+		// invalid request
+		return ok
 	}
 
-	if rf.tryIncreaseCurrentTerm(reply.Term) {
+	if reply.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.currentTerm = reply.Term
+		rf.role = Follower
+		rf.votedFor = -1
+		rf.persist()
 		return ok
 	}
 
@@ -546,39 +592,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 	defer rf.persist()
 
-	// rf.tryIncreaseCurrentTerm(args.Term)
-	// rf.initAppendEntriesReplyDefaults(reply)
-	// if args.Term < rf.currentTerm {
-	// 	return
-	// }
-	// rf.processAppendEntryRequest(args, reply)
-
-	reply.Success = false
+	rf.tryIncreaseCurrentTerm(args.Term)
+	rf.initAppendEntriesReplyDefaults(reply)
 
 	if args.Term < rf.currentTerm {
-		// reject requests with stale term number
-		reply.Term = rf.currentTerm
-		reply.MismatchStartingIndex = rf.getLastLogEntry(false).Index + 1
 		return
 	}
 
-	// if args.Term > rf.currentTerm {
-	// 	rf.role = Follower
-	// 	rf.currentTerm = args.Term
-	// 	rf.votedFor = -1
-	// }
-	rf.tryIncreaseCurrentTerm(args.Term)
-
-	rf.heartbeatReceivedCh <- true
-
-	reply.Term = rf.currentTerm
-
-	if args.PrevLogIndex > rf.getLastLogEntry(false).Index {
-		reply.MismatchStartingIndex = rf.getLastLogEntry(false).Index + 1
-		return
-	}
-
-	rf.rame(args, reply)
+	rf.processAppendEntryRequest(args, reply)
 }
 
 func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -591,9 +612,6 @@ func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendE
 			r.acceptAppendEntriesRequest(args, reply)
 		}
 	}
-
-	r.rame(args, reply)
-
 }
 
 func (r *Raft) initAppendEntriesReplyDefaults(reply *AppendEntriesReply) {
@@ -611,36 +629,6 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
 	}
 
-}
-
-func (r *Raft) rame(args *AppendEntriesArgs, reply *AppendEntriesReply) {
-	baseIndex := r.log[0].Index
-
-	if args.PrevLogIndex >= baseIndex && args.PrevLogTerm != r.log[args.PrevLogIndex-baseIndex].Term {
-		// if entry log[prevLogIndex] conflicts with new one, there may be conflict entries before.
-		// bypass all entries during the problematic term to speed up.
-		term := r.log[args.PrevLogIndex-baseIndex].Term
-		for i := args.PrevLogIndex - 1; i >= baseIndex; i-- {
-			if r.log[i-baseIndex].Term != term {
-				reply.MismatchStartingIndex = i + 1
-				break
-			}
-		}
-	} else if args.PrevLogIndex >= baseIndex-1 {
-		// otherwise log up to prevLogIndex are safe.
-		// merge lcoal log and entries from leader, and apply log if commitIndex changes.
-		r.log = r.log[:args.PrevLogIndex-baseIndex+1]
-		r.log = append(r.log, args.Entries...)
-
-		reply.Success = true
-		reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
-
-		if r.commitIndex < args.LeaderCommit {
-			// update commitIndex and apply log
-			r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
-			go r.applyLog()
-		}
-	}
 }
 
 func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -689,7 +677,7 @@ func (r *Raft) sendAppendEntriesHandler(server int, args *AppendEntriesArgs, rep
 
 func (r *Raft) updateCommitIndex() {
 	baseIndex := r.log[0].Index
-	for N := r.getLastLogEntry(false).Index; N > r.commitIndex && r.log[N-baseIndex].Term == r.currentTerm; N-- {
+	for N := r.getLastLogIndex(); N > r.commitIndex && r.log[N-baseIndex].Term == r.currentTerm; N-- {
 		// find if there exists an N to update commitIndex
 		count := 1
 		for i := range r.peers {
@@ -729,33 +717,19 @@ func (r *Raft) broadcastHeartbeats() {
 		if !r.killed() && server != r.me && r.role == Leader {
 
 			if r.nextIndex[server] > baseIndex {
-				// args := r.getAppendEntriesArgs(server)
+				args := r.getAppendEntriesArgs(server)
 				reply := r.getAppendEntriesReply(server)
-
-				args := &AppendEntriesArgs{}
-				args.Term = r.currentTerm
-				args.LeaderID = r.me
-				args.PrevLogIndex = r.nextIndex[server] - 1
-				if args.PrevLogIndex >= baseIndex {
-					args.PrevLogTerm = r.log[args.PrevLogIndex-baseIndex].Term
-				}
-				if r.nextIndex[server] <= r.getLastLogEntry(false).Index {
-					args.Entries = r.log[r.nextIndex[server]-baseIndex:]
-				}
-				args.LeaderCommit = r.commitIndex
 
 				go r.sendAppendEntriesHandler(server, args, reply)
 			} else {
-				args := &InstallSnapshotArgs{
-					Term:              r.currentTerm,
-					LeaderId:          r.me,
-					LastIncludedIndex: r.log[0].Index,
-					LastIncludedTerm:  r.log[0].Term,
-					Data:              snapshot,
-				}
-				reply := &InstallSnapshotReply{}
+				args := &InstallSnapshotArgs{}
+				args.Term = r.currentTerm
+				args.LeaderId = r.me
+				args.LastIncludedIndex = r.log[0].Index
+				args.LastIncludedTerm = r.log[0].Term
+				args.Data = snapshot
 
-				go r.sendInstallSnapshot(server, args, reply)
+				go r.sendInstallSnapshot(server, args, &InstallSnapshotReply{})
 			}
 		}
 	}
@@ -871,11 +845,9 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 
 	// initialize from state persisted before a crash
 	r.readPersist(persister.ReadRaftState())
-	r.recoverFromSnapshot(persister.ReadSnapshot())
-	r.persist()
 
 	go r.Worker()
-	// go r.applyLogWorker()
+	go r.applyLogWorker()
 
 	return r
 }
@@ -962,12 +934,9 @@ func (r *Raft) increaseTermAndBecameFollower(newTerm int) {
 	r.role = Follower
 }
 
-func (r *Raft) tryIncreaseCurrentTerm(termToCompare int) bool {
+func (r *Raft) tryIncreaseCurrentTerm(termToCompare int) {
 	if r.currentTerm < termToCompare {
 		r.increaseTermAndBecameFollower(termToCompare)
-		return true
-	} else {
-		return false
 	}
 }
 

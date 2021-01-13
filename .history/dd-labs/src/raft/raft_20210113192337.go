@@ -299,13 +299,12 @@ func (rf *Raft) trimLog(lastIncludedIndex int, lastIncludedTerm int) {
 
 func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
 	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
-
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer rf.persist()
 
 	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
-		return false
+		// invalid request
+		return ok
 	}
 
 	if rf.tryIncreaseCurrentTerm(reply.Term) {

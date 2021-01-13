@@ -250,7 +250,6 @@ type InstallSnapshotReply struct {
 func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer rf.persist()
 
 	if args.Term < rf.currentTerm {
 		// reject requests with stale term number
@@ -258,14 +257,13 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		return
 	}
 
-	// if args.Term > rf.currentTerm {
-	// 	// become follower and update current term
-	// 	rf.role = Follower
-	// 	rf.currentTerm = args.Term
-	// 	rf.votedFor = -1
-	// 	rf.persist()
-	// }
-	rf.tryIncreaseCurrentTerm(args.Term)
+	if args.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.role = Follower
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
+		rf.persist()
+	}
 
 	// confirm heartbeat to refresh timeout
 	rf.heartbeatReceivedCh <- true
@@ -299,16 +297,20 @@ func (rf *Raft) trimLog(lastIncludedIndex int, lastIncludedTerm int) {
 
 func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
 	ok := rf.peers[server].Call("Raft.InstallSnapshot", args, reply)
-
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	defer rf.persist()
 
 	if !ok || rf.role != Leader || args.Term != rf.currentTerm {
-		return false
+		// invalid request
+		return ok
 	}
 
-	if rf.tryIncreaseCurrentTerm(reply.Term) {
+	if reply.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.currentTerm = reply.Term
+		rf.role = Follower
+		rf.votedFor = -1
+		rf.persist()
 		return ok
 	}
 
@@ -562,13 +564,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
-	// if args.Term > rf.currentTerm {
-	// 	rf.role = Follower
-	// 	rf.currentTerm = args.Term
-	// 	rf.votedFor = -1
-	// }
-	rf.tryIncreaseCurrentTerm(args.Term)
+	if args.Term > rf.currentTerm {
+		// become follower and update current term
+		rf.role = Follower
+		rf.currentTerm = args.Term
+		rf.votedFor = -1
+	}
 
+	// confirm heartbeat to refresh timeout
 	rf.heartbeatReceivedCh <- true
 
 	reply.Term = rf.currentTerm
@@ -753,9 +756,8 @@ func (r *Raft) broadcastHeartbeats() {
 					LastIncludedTerm:  r.log[0].Term,
 					Data:              snapshot,
 				}
-				reply := &InstallSnapshotReply{}
 
-				go r.sendInstallSnapshot(server, args, reply)
+				go r.sendInstallSnapshot(server, args, &InstallSnapshotReply{})
 			}
 		}
 	}
@@ -962,12 +964,9 @@ func (r *Raft) increaseTermAndBecameFollower(newTerm int) {
 	r.role = Follower
 }
 
-func (r *Raft) tryIncreaseCurrentTerm(termToCompare int) bool {
+func (r *Raft) tryIncreaseCurrentTerm(termToCompare int) {
 	if r.currentTerm < termToCompare {
 		r.increaseTermAndBecameFollower(termToCompare)
-		return true
-	} else {
-		return false
 	}
 }
 
