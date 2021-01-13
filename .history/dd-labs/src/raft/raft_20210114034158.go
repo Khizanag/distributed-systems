@@ -178,19 +178,18 @@ func (r *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	zerothIndex := r.log[0].Index
 	lastIndex := r.getLastLogEntry(false).Index
 
-	if index > zerothIndex && index <= lastIndex {
-
-		r.truncateLog(index, r.log[index-zerothIndex].Term)
-
-		w := new(bytes.Buffer)
-		e := labgob.NewEncoder(w)
-		e.Encode(r.log[0].Index)
-		e.Encode(r.log[0].Term)
-		snapshot := append(w.Bytes(), kvSnapshot...)
-
-		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), snapshot)
-
+	if index <= zerothIndex || index > lastIndex {
+		return
 	}
+	r.truncateLog(index, r.log[index-zerothIndex].Term)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(r.log[0].Index)
+	e.Encode(r.log[0].Term)
+	snapshot := append(w.Bytes(), kvSnapshot...)
+
+	r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), snapshot)
 }
 
 func (rf *Raft) recoverFromSnapshot(snapshot []byte) {

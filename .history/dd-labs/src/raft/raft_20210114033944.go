@@ -156,43 +156,41 @@ func (raft *Raft) readPersist(data []byte) {
 // ##################################################################################################
 // ##################################################################################################
 
-func (r *Raft) convertRaftStateToBytes() []byte {
+func (rf *Raft) getRaftState() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
-
-	e.Encode(r.currentTerm)
-	e.Encode(r.votedFor)
-	e.Encode(r.log)
-
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
 	return w.Bytes()
 }
 
-func (r *Raft) GetRaftStateSize() int {
-	return r.persister.RaftStateSize()
+func (rf *Raft) GetRaftStateSize() int {
+	return rf.persister.RaftStateSize()
 }
 
-func (r *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
-	zerothIndex := r.log[0].Index
-	lastIndex := r.getLastLogEntry(false).Index
-
-	if index > zerothIndex && index <= lastIndex {
-
-		r.truncateLog(index, r.log[index-zerothIndex].Term)
-
-		w := new(bytes.Buffer)
-		e := labgob.NewEncoder(w)
-		e.Encode(r.log[0].Index)
-		e.Encode(r.log[0].Term)
-		snapshot := append(w.Bytes(), kvSnapshot...)
-
-		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), snapshot)
-
+	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogEntry(false).Index
+	if index <= baseIndex || index > lastIndex {
+		return
 	}
+	rf.truncateLog(index, rf.log[index-baseIndex].Term)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.log[0].Index)
+	e.Encode(rf.log[0].Term)
+	snapshot := append(w.Bytes(), kvSnapshot...)
+
+	rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
 }
 
+//
+// recover from previous raft snapshot.
+//
 func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	if snapshot == nil || len(snapshot) < 1 {
 		return
@@ -202,14 +200,14 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	r := bytes.NewBuffer(snapshot)
 	d := labgob.NewDecoder(r)
 
-	if d.Decode(&lastIncludedIndex) != nil || d.Decode(&lastIncludedTerm) != nil {
+	if d.Decode(&lastIncludedIndex) == nil || d.Decode(&lastIncludedTerm) {
 		fmt.Printf("-- raft.recoverFromSnapshot: error during decoding\n")
 	} else {
 		rf.lastApplied = lastIncludedIndex
 		rf.commitIndex = lastIncludedIndex
 		rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
 
-		applyMsg := ApplyMsg{
+		appltMsg := ApplyMsg{
 			UseSnapshot: true,
 			Snapshot:    snapshot,
 		}
@@ -261,7 +259,7 @@ func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshot
 		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
 		r.lastApplied = args.LastIncludedIndex
 		r.commitIndex = args.LastIncludedIndex
-		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), args.Data)
+		r.persister.SaveStateAndSnapshot(r.getRaftState(), args.Data)
 
 		applyMsg := ApplyMsg{
 			UseSnapshot: true,

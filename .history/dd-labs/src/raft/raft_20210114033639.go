@@ -156,43 +156,41 @@ func (raft *Raft) readPersist(data []byte) {
 // ##################################################################################################
 // ##################################################################################################
 
-func (r *Raft) convertRaftStateToBytes() []byte {
+func (rf *Raft) getRaftState() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
-
-	e.Encode(r.currentTerm)
-	e.Encode(r.votedFor)
-	e.Encode(r.log)
-
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
 	return w.Bytes()
 }
 
-func (r *Raft) GetRaftStateSize() int {
-	return r.persister.RaftStateSize()
+func (rf *Raft) GetRaftStateSize() int {
+	return rf.persister.RaftStateSize()
 }
 
-func (r *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
-	zerothIndex := r.log[0].Index
-	lastIndex := r.getLastLogEntry(false).Index
-
-	if index > zerothIndex && index <= lastIndex {
-
-		r.truncateLog(index, r.log[index-zerothIndex].Term)
-
-		w := new(bytes.Buffer)
-		e := labgob.NewEncoder(w)
-		e.Encode(r.log[0].Index)
-		e.Encode(r.log[0].Term)
-		snapshot := append(w.Bytes(), kvSnapshot...)
-
-		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), snapshot)
-
+	baseIndex, lastIndex := rf.log[0].Index, rf.getLastLogEntry(false).Index
+	if index <= baseIndex || index > lastIndex {
+		return
 	}
+	rf.truncateLog(index, rf.log[index-baseIndex].Term)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.log[0].Index)
+	e.Encode(rf.log[0].Term)
+	snapshot := append(w.Bytes(), kvSnapshot...)
+
+	rf.persister.SaveStateAndSnapshot(rf.getRaftState(), snapshot)
 }
 
+//
+// recover from previous raft snapshot.
+//
 func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	if snapshot == nil || len(snapshot) < 1 {
 		return
@@ -201,21 +199,15 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	var lastIncludedIndex, lastIncludedTerm int
 	r := bytes.NewBuffer(snapshot)
 	d := labgob.NewDecoder(r)
+	d.Decode(&lastIncludedIndex)
+	d.Decode(&lastIncludedTerm)
 
-	if d.Decode(&lastIncludedIndex) != nil || d.Decode(&lastIncludedTerm) != nil {
-		fmt.Printf("-- raft.recoverFromSnapshot: error during decoding\n")
-	} else {
-		rf.lastApplied = lastIncludedIndex
-		rf.commitIndex = lastIncludedIndex
-		rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
+	rf.lastApplied = lastIncludedIndex
+	rf.commitIndex = lastIncludedIndex
+	rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
 
-		applyMsg := ApplyMsg{
-			UseSnapshot: true,
-			Snapshot:    snapshot,
-		}
-		rf.applyCh <- applyMsg
-	}
-
+	msg := ApplyMsg{UseSnapshot: true, Snapshot: snapshot}
+	rf.applyCh <- msg
 }
 
 type InstallSnapshotArgs struct {
@@ -225,23 +217,12 @@ type InstallSnapshotArgs struct {
 	LastIncludedTerm  int    // term of lastIncludedIndex
 	Offset            int    // byte offset where chunk is positioned in the snapshot file
 	Data              []byte // raw bytes of the snapshot chunk, starting at offset
-	Done              bool   // true if this is the last chunk
 }
 
 type InstallSnapshotReply struct {
-	Term int // currentTerm, for leader to update itself
+	Term int
 }
 
-/*
-	1. Reply immediately if term < currentTerm
-	2. Create new snapshot file if first chunk (offset is 0)
-	3. Write data into snapshot file at given offset
-	4. Reply and wait for more data chunks if done is false
-	5. Save snapshot file, discard any existing or partial snapshot with a smaller index
-	6. If existing log entry has same index and term as snapshot's last included entry, retain log entries following it and reply
-	7. Discard the entire log
-	8. Reset state machine using snapshot contents (and load snapshot's cluster configuration)
-*/
 func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -261,7 +242,7 @@ func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshot
 		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
 		r.lastApplied = args.LastIncludedIndex
 		r.commitIndex = args.LastIncludedIndex
-		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), args.Data)
+		r.persister.SaveStateAndSnapshot(r.getRaftState(), args.Data)
 
 		applyMsg := ApplyMsg{
 			UseSnapshot: true,
