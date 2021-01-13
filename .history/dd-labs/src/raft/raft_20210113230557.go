@@ -580,6 +580,12 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 
 	if r.commitIndex < args.LeaderCommit {
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
+	}
+
+	r.log = r.log[:args.PrevLogIndex-zerothIndex+1]
+
+	if r.commitIndex < args.LeaderCommit {
+		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
 		go r.applyLog()
 	}
 

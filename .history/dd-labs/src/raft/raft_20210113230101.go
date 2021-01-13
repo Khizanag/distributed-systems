@@ -557,12 +557,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	r.heartbeatReceivedCh <- true
 
-	zerothIndex := r.log[0].Index
-
-	if args.PrevLogIndex >= zerothIndex && args.PrevLogTerm != r.log[args.PrevLogIndex-zerothIndex].Term {
-		r.rejectAppendEntriesRequest(args, reply, zerothIndex)
-	} else if args.PrevLogIndex >= zerothIndex-1 {
-		r.acceptAppendEntriesRequest(args, reply, zerothIndex)
+	if args.PrevLogIndex <= r.getLastLogEntry(false).Index {
+		if args.PrevLogTerm != r.log[args.PrevLogIndex].Term {
+			r.rejectAppendEntriesRequest(args, reply)
+		} else if args.PrevLogIndex >= 0 { // TODO -1
+			r.acceptAppendEntriesRequest(args, reply)
+		}
 	}
 
 }
@@ -573,24 +573,52 @@ func (r *Raft) initAppendEntriesReplyDefaults(reply *AppendEntriesReply) {
 	reply.MismatchStartingIndex = r.getLastLogEntry(false).Index + 1
 }
 
-func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex int) {
+func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	reply.Success = true
-	r.log = append(r.log[:args.PrevLogIndex+1-zerothIndex], args.Entries...)
+	r.log = append(r.log[:args.PrevLogIndex+1], args.Entries...)
 	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
 
 	if r.commitIndex < args.LeaderCommit {
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
-		go r.applyLog()
 	}
 
 }
 
-func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex int) {
-	reply.Success = false
+func (r *Raft) rame(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	baseIndex := r.log[0].Index
 
-	mismatchLogEntryTerm := r.log[args.PrevLogIndex-zerothIndex].Term
-	for i := args.PrevLogIndex - 1; i >= zerothIndex; i-- {
-		if r.log[i-zerothIndex].Term != mismatchLogEntryTerm {
+	if args.PrevLogIndex >= baseIndex && args.PrevLogTerm != r.log[args.PrevLogIndex-baseIndex].Term {
+		// if entry log[prevLogIndex] conflicts with new one, there may be conflict entries before.
+		// bypass all entries during the problematic term to speed up.
+		term := r.log[args.PrevLogIndex-baseIndex].Term
+		for i := args.PrevLogIndex - 1; i >= baseIndex; i-- {
+			if r.log[i-baseIndex].Term != term {
+				reply.MismatchStartingIndex = i + 1
+				break
+			}
+		}
+	} else if args.PrevLogIndex >= baseIndex-1 {
+		// otherwise log up to prevLogIndex are safe.
+		// merge lcoal log and entries from leader, and apply log if commitIndex changes.
+		r.log = r.log[:args.PrevLogIndex-baseIndex+1]
+		r.log = append(r.log, args.Entries...)
+
+		reply.Success = true
+		reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
+
+		if r.commitIndex < args.LeaderCommit {
+			// update commitIndex and apply log
+			r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
+			go r.applyLog()
+		}
+	}
+}
+
+func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	reply.Success = false
+	mismatchLogEntryTerm := r.log[args.PrevLogIndex].Term
+	for i := args.PrevLogIndex - 1; i >= 0; i-- {
+		if r.log[i].Term != mismatchLogEntryTerm {
 			reply.MismatchStartingIndex = i + 1
 			break
 		}

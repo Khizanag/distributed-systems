@@ -575,10 +575,21 @@ func (r *Raft) initAppendEntriesReplyDefaults(reply *AppendEntriesReply) {
 
 func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex int) {
 	reply.Success = true
-	r.log = append(r.log[:args.PrevLogIndex+1-zerothIndex], args.Entries...)
+	r.log = append(r.log[:args.PrevLogIndex+1], args.Entries...)
 	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
 
 	if r.commitIndex < args.LeaderCommit {
+		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
+	}
+
+	r.log = r.log[:args.PrevLogIndex-zerothIndex+1]
+	r.log = append(r.log, args.Entries...)
+
+	reply.Success = true
+	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
+
+	if r.commitIndex < args.LeaderCommit {
+		// update commitIndex and apply log
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
 		go r.applyLog()
 	}
@@ -587,10 +598,17 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 
 func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex int) {
 	reply.Success = false
+	mismatchLogEntryTerm := r.log[args.PrevLogIndex].Term
+	for i := args.PrevLogIndex - 1; i >= 0; i-- {
+		if r.log[i].Term != mismatchLogEntryTerm {
+			reply.MismatchStartingIndex = i + 1
+			break
+		}
+	}
 
-	mismatchLogEntryTerm := r.log[args.PrevLogIndex-zerothIndex].Term
+	term := r.log[args.PrevLogIndex-zerothIndex].Term
 	for i := args.PrevLogIndex - 1; i >= zerothIndex; i-- {
-		if r.log[i-zerothIndex].Term != mismatchLogEntryTerm {
+		if r.log[i-zerothIndex].Term != term {
 			reply.MismatchStartingIndex = i + 1
 			break
 		}

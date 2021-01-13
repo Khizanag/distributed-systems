@@ -559,10 +559,11 @@ func (r *Raft) processAppendEntryRequest(args *AppendEntriesArgs, reply *AppendE
 
 	zerothIndex := r.log[0].Index
 
-	if args.PrevLogIndex >= zerothIndex && args.PrevLogTerm != r.log[args.PrevLogIndex-zerothIndex].Term {
-		r.rejectAppendEntriesRequest(args, reply, zerothIndex)
-	} else if args.PrevLogIndex >= zerothIndex-1 {
-		r.acceptAppendEntriesRequest(args, reply, zerothIndex)
+	if args.PrevLogIndex >= baseIndex && args.PrevLogTerm != r.log[args.PrevLogIndex-baseIndex].Term {
+			r.rejectAppendEntriesRequest(args, reply, zerothIndex)
+	} else if args.PrevLogIndex >= baseIndex-1 {
+			r.acceptAppendEntriesRequest(args, reply, zerothIndex)
+		}
 	}
 
 }
@@ -575,26 +576,46 @@ func (r *Raft) initAppendEntriesReplyDefaults(reply *AppendEntriesReply) {
 
 func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex int) {
 	reply.Success = true
-	r.log = append(r.log[:args.PrevLogIndex+1-zerothIndex], args.Entries...)
+	r.log = append(r.log[:args.PrevLogIndex+1], args.Entries...)
 	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
 
 	if r.commitIndex < args.LeaderCommit {
+		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
+	}
+
+
+	r.log = r.log[:args.PrevLogIndex-baseIndex+1]
+	r.log = append(r.log, args.Entries...)
+
+	reply.Success = true
+	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
+
+	if r.commitIndex < args.LeaderCommit {
+		// update commitIndex and apply log
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
 		go r.applyLog()
 	}
 
 }
 
-func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex int) {
-	reply.Success = false
 
-	mismatchLogEntryTerm := r.log[args.PrevLogIndex-zerothIndex].Term
-	for i := args.PrevLogIndex - 1; i >= zerothIndex; i-- {
-		if r.log[i-zerothIndex].Term != mismatchLogEntryTerm {
+func (r *Raft) rejectAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex) {
+	reply.Success = false
+	mismatchLogEntryTerm := r.log[args.PrevLogIndex].Term
+	for i := args.PrevLogIndex - 1; i >= 0; i-- {
+		if r.log[i].Term != mismatchLogEntryTerm {
 			reply.MismatchStartingIndex = i + 1
 			break
 		}
 	}
+
+	term := r.log[args.PrevLogIndex-baseIndex].Term
+		for i := args.PrevLogIndex - 1; i >= baseIndex; i-- {
+			if r.log[i-baseIndex].Term != term {
+				reply.MismatchStartingIndex = i + 1
+				break
+			}
+		}
 }
 
 func (r *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {

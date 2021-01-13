@@ -575,10 +575,21 @@ func (r *Raft) initAppendEntriesReplyDefaults(reply *AppendEntriesReply) {
 
 func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *AppendEntriesReply, zerothIndex int) {
 	reply.Success = true
-	r.log = append(r.log[:args.PrevLogIndex+1-zerothIndex], args.Entries...)
+	r.log = append(r.log[:args.PrevLogIndex+1], args.Entries...)
 	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
 
 	if r.commitIndex < args.LeaderCommit {
+		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
+	}
+
+	r.log = r.log[:args.PrevLogIndex-zerothIndex+1]
+	r.log = append(r.log, args.Entries...)
+
+	reply.Success = true
+	reply.MismatchStartingIndex = args.PrevLogIndex + len(args.Entries)
+
+	if r.commitIndex < args.LeaderCommit {
+		// update commitIndex and apply log
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
 		go r.applyLog()
 	}
