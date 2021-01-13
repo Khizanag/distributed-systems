@@ -208,7 +208,7 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	r := bytes.NewBuffer(snapshot)
 	d := labgob.NewDecoder(r)
 
-	if d.Decode(&lastIncludedIndex) != nil || d.Decode(&lastIncludedTerm) != nil {
+	if d.Decode(&lastIncludedIndex) != nil || d.Decode(&lastIncludedTerm) {
 		fmt.Printf("-- raft.recoverFromSnapshot: error during decoding\n")
 	} else {
 		rf.lastApplied = lastIncludedIndex
@@ -216,11 +216,9 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 		rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
 	}
 
-	applyMsg := ApplyMsg{
-		UseSnapshot: true,
-		Snapshot:    snapshot,
-	}
-	rf.applyCh <- applyMsg
+	// send snapshot to kv server
+	msg := ApplyMsg{UseSnapshot: true, Snapshot: snapshot}
+	rf.applyCh <- msg
 }
 
 func (rf *Raft) applyLog() {
