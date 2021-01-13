@@ -185,7 +185,7 @@ func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 		// can't trim log since index is invalid
 		return
 	}
-	rf.truncateLog(index, rf.log[index-baseIndex].Term)
+	rf.trimLog(index, rf.log[index-baseIndex].Term)
 
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
@@ -212,7 +212,7 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 
 	rf.lastApplied = lastIncludedIndex
 	rf.commitIndex = lastIncludedIndex
-	rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
+	rf.trimLog(lastIncludedIndex, lastIncludedTerm)
 
 	// send snapshot to kv server
 	msg := ApplyMsg{UseSnapshot: true, Snapshot: snapshot}
@@ -273,7 +273,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	reply.Term = rf.currentTerm
 
 	if args.LastIncludedIndex > rf.commitIndex {
-		rf.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
+		rf.trimLog(args.LastIncludedIndex, args.LastIncludedTerm)
 		rf.lastApplied = args.LastIncludedIndex
 		rf.commitIndex = args.LastIncludedIndex
 		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
@@ -284,20 +284,17 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	}
 }
 
-func (r *Raft) truncateLog(lastIndex int, lastTerm int) {
-	zerothLogEntry := LogEntry{
-		Index: lastIndex,
-		Term:  lastTerm,
-	}
-	newLog := []LogEntry{zerothLogEntry}
+func (rf *Raft) trimLog(lastIncludedIndex int, lastIncludedTerm int) {
+	newLog := make([]LogEntry, 0)
+	newLog = append(newLog, LogEntry{Index: lastIncludedIndex, Term: lastIncludedTerm})
 
-	for i := len(r.log) - 1; i >= 0; i-- {
-		if r.log[i].Index == lastIndex && r.log[i].Term == lastTerm {
-			newLog = append(newLog, r.log[i+1:]...)
+	for i := len(rf.log) - 1; i >= 0; i-- {
+		if rf.log[i].Index == lastIncludedIndex && rf.log[i].Term == lastIncludedTerm {
+			newLog = append(newLog, rf.log[i+1:]...)
 			break
 		}
 	}
-	r.log = newLog
+	rf.log = newLog
 }
 
 func (r *Raft) sendInstallSnapshotHandlerRPC(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
@@ -565,11 +562,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Success = false
 
 	if args.Term < rf.currentTerm {
+		// reject requests with stale term number
 		reply.Term = rf.currentTerm
 		reply.MismatchStartingIndex = rf.getLastLogEntry(false).Index + 1
 		return
 	}
 
+	// if args.Term > rf.currentTerm {
+	// 	rf.role = Follower
+	// 	rf.currentTerm = args.Term
+	// 	rf.votedFor = -1
+	// }
 	rf.tryIncreaseCurrentTerm(args.Term)
 
 	rf.heartbeatReceivedCh <- true

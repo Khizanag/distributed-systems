@@ -185,7 +185,7 @@ func (rf *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 		// can't trim log since index is invalid
 		return
 	}
-	rf.truncateLog(index, rf.log[index-baseIndex].Term)
+	rf.trimLog(index, rf.log[index-baseIndex].Term)
 
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
@@ -212,7 +212,7 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 
 	rf.lastApplied = lastIncludedIndex
 	rf.commitIndex = lastIncludedIndex
-	rf.truncateLog(lastIncludedIndex, lastIncludedTerm)
+	rf.trimLog(lastIncludedIndex, lastIncludedTerm)
 
 	// send snapshot to kv server
 	msg := ApplyMsg{UseSnapshot: true, Snapshot: snapshot}
@@ -273,7 +273,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	reply.Term = rf.currentTerm
 
 	if args.LastIncludedIndex > rf.commitIndex {
-		rf.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
+		rf.trimLog(args.LastIncludedIndex, args.LastIncludedTerm)
 		rf.lastApplied = args.LastIncludedIndex
 		rf.commitIndex = args.LastIncludedIndex
 		rf.persister.SaveStateAndSnapshot(rf.getRaftState(), args.Data)
