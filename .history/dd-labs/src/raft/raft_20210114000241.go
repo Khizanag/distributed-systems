@@ -219,6 +219,22 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 	rf.applyCh <- msg
 }
 
+func (rf *Raft) applyLog() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	baseIndex := rf.log[0].Index
+
+	for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
+		msg := ApplyMsg{}
+		msg.CommandIndex = i
+		msg.CommandValid = true
+		msg.Command = rf.log[i-baseIndex].Command
+		rf.applyCh <- msg
+	}
+	rf.lastApplied = rf.commitIndex
+}
+
 type InstallSnapshotArgs struct {
 	Term              int
 	LeaderId          int
@@ -557,6 +573,7 @@ func (r *Raft) acceptAppendEntriesRequest(args *AppendEntriesArgs, reply *Append
 
 	if r.commitIndex < args.LeaderCommit {
 		r.commitIndex = min(args.LeaderCommit, r.getLastLogEntry(false).Index)
+		// go r.applyLog()
 	}
 
 }
@@ -618,6 +635,7 @@ func (r *Raft) updateCommitIndex() {
 		}
 		if count > len(r.peers)/2 {
 			r.commitIndex = N
+			// go r.applyLog()
 			break
 		}
 	}
