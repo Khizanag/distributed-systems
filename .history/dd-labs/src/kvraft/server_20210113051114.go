@@ -178,30 +178,43 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	if applyMsg.UseSnapshot {
-		r := bytes.NewBuffer(applyMsg.Snapshot)
+	if msg.UseSnapshot {
+		r := bytes.NewBuffer(msg.Snapshot)
 		d := labgob.NewDecoder(r)
 
 		var lastIncludedIndex, lastIncludedTerm int
 		d.Decode(&lastIncludedIndex)
 		d.Decode(&lastIncludedTerm)
-		d.Decode(&kv.DB)
-		d.Decode(&kv.lastRequestIDOf)
+		d.Decode(&kv.data)
+		d.Decode(&kv.ack)
 	} else {
-		op := applyMsg.Command.(Op)
-		result := kv.processAppendGetPutRequest(op)
-		kv.clearResultFor(applyMsg.CommandIndex)
-		kv.resultOf[applyMsg.CommandIndex] <- result
+		// apply operation and send result
+		op := msg.Command.(Op)
+		result := kv.applyOp(op)
+		if ch, ok := kv.resultCh[msg.CommandIndex]; ok {
+			select {
+			case <-ch: // drain bad data
+			default:
+			}
+		} else {
+			kv.resultCh[msg.CommandIndex] = make(chan Result, 1)
+		}
+		kv.resultCh[msg.CommandIndex] <- result
 
 		// create snapshot if raft state exceeds allowed size
 		if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
 			w := new(bytes.Buffer)
 			e := labgob.NewEncoder(w)
-			e.Encode(kv.DB)
-			e.Encode(kv.lastRequestIDOf)
-			go kv.rf.CreateSnapshot(w.Bytes(), applyMsg.CommandIndex)
+			e.Encode(kv.data)
+			e.Encode(kv.ack)
+			go kv.rf.CreateSnapshot(w.Bytes(), msg.CommandIndex)
 		}
 	}
+
+	op := applyMsg.Command.(Op)
+	result := kv.processAppendGetPutRequest(op)
+	kv.clearResultFor(applyMsg.CommandIndex)
+	kv.resultOf[applyMsg.CommandIndex] <- result
 }
 
 func (kv *KVServer) clearResultFor(index int) {

@@ -197,9 +197,9 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 		if kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() > kv.maxraftstate {
 			w := new(bytes.Buffer)
 			e := labgob.NewEncoder(w)
-			e.Encode(kv.DB)
-			e.Encode(kv.lastRequestIDOf)
-			go kv.rf.CreateSnapshot(w.Bytes(), applyMsg.CommandIndex)
+			e.Encode(kv.data)
+			e.Encode(kv.ack)
+			go kv.rf.CreateSnapshot(w.Bytes(), msg.CommandIndex)
 		}
 	}
 }
