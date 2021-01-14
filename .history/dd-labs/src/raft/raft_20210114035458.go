@@ -177,8 +177,8 @@ func (r *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	lastIndex := r.getLastLogEntry(false).Index
 	zerothIndex := r.log[0].Index
+	lastIndex := r.getLastLogEntry(false).Index
 
 	if index > zerothIndex && index <= lastIndex {
 
@@ -695,7 +695,7 @@ func (r *Raft) getAppendEntriesReply(server int) *AppendEntriesReply {
 func (r *Raft) getInstallSnapshotArgs(snapshot []byte) *InstallSnapshotArgs {
 	return &InstallSnapshotArgs{
 		Term:              r.currentTerm,
-		LeaderID:          r.me,
+		LeaderId:          r.me,
 		LastIncludedIndex: r.log[0].Index,
 		LastIncludedTerm:  r.log[0].Term,
 		Data:              snapshot,

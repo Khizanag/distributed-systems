@@ -189,8 +189,8 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 		var lastRequestIDOf map[int64]int64
 		if d.Decode(&lastIncludedIndex) != nil ||
 			d.Decode(&lastIncludedTerm) != nil ||
-			d.Decode(&DB) != nil ||
-			d.Decode(&lastRequestIDOf) != nil {
+			d.Decode(&kv.DB) != nil ||
+			d.Decode(&kv.lastRequestIDOf) != nil {
 
 			fmt.Printf("-- server.processApplyMessage: error during decoding\n")
 		} else {
@@ -204,19 +204,15 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 		kv.clearResultFor(applyMsg.CommandIndex)
 		kv.resultOf[applyMsg.CommandIndex] <- result
 
-		kv.commitState(applyMsg.CommandIndex)
-	}
-}
+		if kv.maxraftstate != -1 && kv.rf.GetRaftLen() > kv.maxraftstate {
+			w := new(bytes.Buffer)
+			e := labgob.NewEncoder(w)
 
-func (kv *KVServer) commitState(index int) {
-	if kv.maxraftstate != -1 && kv.rf.GetRaftLen() > kv.maxraftstate {
-		w := new(bytes.Buffer)
-		e := labgob.NewEncoder(w)
+			e.Encode(kv.DB)
+			e.Encode(kv.lastRequestIDOf)
 
-		e.Encode(kv.DB)
-		e.Encode(kv.lastRequestIDOf)
-
-		go kv.rf.CreateSnapshot(w.Bytes(), index)
+			go kv.rf.CreateSnapshot(w.Bytes(), applyMsg.CommandIndex)
+		}
 	}
 }
 

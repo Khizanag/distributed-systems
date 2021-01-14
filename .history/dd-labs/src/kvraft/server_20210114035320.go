@@ -189,8 +189,8 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 		var lastRequestIDOf map[int64]int64
 		if d.Decode(&lastIncludedIndex) != nil ||
 			d.Decode(&lastIncludedTerm) != nil ||
-			d.Decode(&DB) != nil ||
-			d.Decode(&lastRequestIDOf) != nil {
+			d.Decode(&kv.DB) != nil ||
+			d.Decode(&kv.lastRequestIDOf) != nil {
 
 			fmt.Printf("-- server.processApplyMessage: error during decoding\n")
 		} else {

@@ -2,7 +2,6 @@ package kvraft
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"sync"
 	"sync/atomic"
@@ -183,40 +182,25 @@ func (kv *KVServer) processApplyMessage(applyMsg raft.ApplyMsg) {
 		r := bytes.NewBuffer(applyMsg.Snapshot)
 		d := labgob.NewDecoder(r)
 
-		var lastIncludedIndex int
-		var lastIncludedTerm int
-		var DB map[string]string
-		var lastRequestIDOf map[int64]int64
-		if d.Decode(&lastIncludedIndex) != nil ||
-			d.Decode(&lastIncludedTerm) != nil ||
-			d.Decode(&DB) != nil ||
-			d.Decode(&lastRequestIDOf) != nil {
-
-			fmt.Printf("-- server.processApplyMessage: error during decoding\n")
-		} else {
-			kv.DB = DB
-			kv.lastRequestIDOf = lastRequestIDOf
-		}
-
+		var lastIncludedIndex, lastIncludedTerm int
+		d.Decode(&lastIncludedIndex)
+		d.Decode(&lastIncludedTerm)
+		d.Decode(&kv.DB)
+		d.Decode(&kv.lastRequestIDOf)
 	} else {
 		op := applyMsg.Command.(Op)
 		result := kv.processAppendGetPutRequest(op)
 		kv.clearResultFor(applyMsg.CommandIndex)
 		kv.resultOf[applyMsg.CommandIndex] <- result
 
-		kv.commitState(applyMsg.CommandIndex)
-	}
-}
-
-func (kv *KVServer) commitState(index int) {
-	if kv.maxraftstate != -1 && kv.rf.GetRaftLen() > kv.maxraftstate {
-		w := new(bytes.Buffer)
-		e := labgob.NewEncoder(w)
-
-		e.Encode(kv.DB)
-		e.Encode(kv.lastRequestIDOf)
-
-		go kv.rf.CreateSnapshot(w.Bytes(), index)
+		// create snapshot if raft state exceeds allowed size
+		if kv.maxraftstate != -1 && kv.rf.GetRaftLen() > kv.maxraftstate {
+			w := new(bytes.Buffer)
+			e := labgob.NewEncoder(w)
+			e.Encode(kv.DB)
+			e.Encode(kv.lastRequestIDOf)
+			go kv.rf.CreateSnapshot(w.Bytes(), applyMsg.CommandIndex)
+		}
 	}
 }
 

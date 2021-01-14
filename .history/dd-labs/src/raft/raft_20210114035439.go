@@ -177,8 +177,8 @@ func (r *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	lastIndex := r.getLastLogEntry(false).Index
 	zerothIndex := r.log[0].Index
+	lastIndex := r.getLastLogEntry(false).Index
 
 	if index > zerothIndex && index <= lastIndex {
 
@@ -191,6 +191,7 @@ func (r *Raft) CreateSnapshot(kvSnapshot []byte, index int) {
 		snapshot := append(w.Bytes(), kvSnapshot...)
 
 		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), snapshot)
+
 	}
 }
 
@@ -220,7 +221,7 @@ func (rf *Raft) recoverFromSnapshot(snapshot []byte) {
 }
 
 type InstallSnapshotArgs struct {
-	Term              int    // leader's term
+	Term              int    // leader’s term
 	LeaderID          int    // so follower can redirect clients
 	LastIncludedIndex int    // the snapshot replaces all entries up through and including this index
 	LastIncludedTerm  int    // term of lastIncludedIndex
@@ -695,7 +696,7 @@ func (r *Raft) getAppendEntriesReply(server int) *AppendEntriesReply {
 func (r *Raft) getInstallSnapshotArgs(snapshot []byte) *InstallSnapshotArgs {
 	return &InstallSnapshotArgs{
 		Term:              r.currentTerm,
-		LeaderID:          r.me,
+		LeaderId:          r.me,
 		LastIncludedIndex: r.log[0].Index,
 		LastIncludedTerm:  r.log[0].Term,
 		Data:              snapshot,
