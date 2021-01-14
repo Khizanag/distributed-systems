@@ -260,8 +260,8 @@ func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshot
 
 	if args.LastIncludedIndex > r.commitIndex {
 		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
-		r.commitIndex = args.LastIncludedIndex
 		r.lastApplied = args.LastIncludedIndex
+		r.commitIndex = args.LastIncludedIndex
 		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), args.Data)
 
 		applyMsg := ApplyMsg{

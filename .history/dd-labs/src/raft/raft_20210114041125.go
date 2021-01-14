@@ -262,6 +262,7 @@ func (r *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshot
 		r.truncateLog(args.LastIncludedIndex, args.LastIncludedTerm)
 		r.commitIndex = args.LastIncludedIndex
 		r.lastApplied = args.LastIncludedIndex
+
 		r.persister.SaveStateAndSnapshot(r.convertRaftStateToBytes(), args.Data)
 
 		applyMsg := ApplyMsg{
