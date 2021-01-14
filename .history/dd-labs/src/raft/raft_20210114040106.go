@@ -800,7 +800,8 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 
 	// initialize from state persisted before a crash
 	r.readPersist(persister.ReadRaftState())
-	r.reinstateFromSnapshot(persister.ReadSnapshot())
+	r.recoverFromSnapshot(persister.ReadSnapshot())
+	r.persist()
 
 	go r.Worker()
 	go r.applyLogWorker()
